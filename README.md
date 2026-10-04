@@ -72,7 +72,7 @@ npm install -g @anthropic-ai/claude-code
 codex --version && claude --version
 ```
 
-Install at least one. Antigravity CLI is optional and only used for read-only roles.
+Install at least one. Antigravity is optional — see [step 5b](#5b-optional-antigravity-cli-agy).
 
 ### 5. Log in Agent Desk's own accounts
 
@@ -97,6 +97,39 @@ agent-desk account add team claude      # adds the account, then logs it in
 agent-desk account use architect team   # one role runs on it
 agent-desk account use claude team      # or every role on the claude provider
 ```
+
+### 5b. (Optional) Antigravity CLI (`agy`)
+
+Antigravity runs Gemini (and other) models on a Google subscription. In Agent Desk it can only
+take **read-only roles** (`main`, `explorer`, `researcher`, `architect`) and the `llm` decision
+engine: in headless mode `agy` auto-denies writes and has no write sandbox, so `config check`
+refuses it for `worker` / `deployer`.
+
+1. Install the Antigravity CLI from Google's official Antigravity download page, then let it set
+   up your PATH:
+   ```bash
+   agy install
+   agy --version
+   ```
+2. Sign in once by starting it interactively and following the Google sign-in prompt, then quit:
+   ```bash
+   agy
+   ```
+   Unlike Codex/Claude, `agy` keeps a single login in its own folder (`~/.gemini/antigravity-cli`);
+   Agent Desk uses that login as is (no `agent-desk account` profiles for `agy`).
+3. Check that it works and see the model ids:
+   ```bash
+   agy models
+   ```
+4. Point read-only roles at it (the `antigravity` provider is already defined in the defaults,
+   with `fast: gemini-3.8-flash-medium`, `strong: gemini-3.1-pro-high`):
+   ```bash
+   agent-desk config set roles.explorer.provider=antigravity roles.researcher.provider=antigravity --scope global
+   agent-desk config check      # the rows should say "ok (google subscription agy …)"
+   ```
+
+Note: your own `agy` permission rules (`~/.gemini/antigravity-cli/settings.json` →
+`permissions.allow`) still apply to runs started by Agent Desk; keep them read-only.
 
 ### 6. Check the install
 
@@ -199,6 +232,8 @@ uv run pytest -m agy          # real Antigravity CLI
 | `MISMATCH` | the CLI is logged in as someone else than the pinned identity — log in again with the right account, or `agent-desk account pin <name>` to accept the new one |
 | `DUPLICATE` | two accounts are the same login — log one in with a different account |
 | `agent-desk: command not found` | `uv tool update-shell`, then open a new terminal |
+| `agy not found` / antigravity rows `FAIL` | install `agy`, run `agy install`, sign in with `agy`, check `agy models` |
+| `runtime agy-cli cannot enforce a write sandbox` | a write role (`worker`, `deployer`) points at `antigravity` — use codex or claude for it |
 | wrong Python version | `uv python install 3.12` |
 | checks fail before the agent changed anything | `agent-desk config check --checks` shows which ones; fix them or mark them not `required` |
 
