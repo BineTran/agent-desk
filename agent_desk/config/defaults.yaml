@@ -1,0 +1,33 @@
+policy: { subscription_only: true, allow_api_key: [] }
+providers:
+  codex:  { runtime: codex,      auth: login }
+  claude: { runtime: claude-cli, auth: login }
+  antigravity: { runtime: agy-cli, auth: login }
+tiers:
+  codex:  { fast: gpt-5.6-luna, strong: gpt-6.1-sol }
+  claude: { fast: haiku, strong: sonnet, max: opus }
+  antigravity: { fast: gemini-3.8-flash-medium, strong: gemini-3.1-pro-high }
+roles:
+  # effort is always explicit: an unset effort would silently inherit ~/.codex/config.toml
+  main:       { provider: codex, model: gpt-6.1-sol, effort: high, access: read, limits: { max_input_tokens: 800000, max_tool_calls: 15 } }
+  explorer:   { provider: codex, tier: fast, effort: low, access: read, limits: { max_input_tokens: 1200000, max_tool_calls: 25 } }
+  worker:     { provider: codex, tiers: [fast, strong], default_tier: strong, effort: medium, access: write, limits: { max_input_tokens: 3000000, max_tool_calls: 60 } }
+  researcher: { provider: codex, tier: fast, effort: low, access: read, network: true, limits: { max_input_tokens: 1000000, max_tool_calls: 20 } }
+  architect:  { provider: codex, model: gpt-6-astra, effort: medium, access: read, limits: { max_input_tokens: 800000, max_tool_calls: 20 } }
+  # merge/push/deploy steps; every push asks you, force-push is always denied
+  deployer:   { provider: codex, tier: strong, effort: medium, access: write, network: true, limits: { max_input_tokens: 1500000, max_tool_calls: 40 } }
+  # gatekeeper: decides when an agent wants to read env vars or secret files (approval.env_gate)
+  debug:      { provider: claude, model: haiku, effort: low, access: read }
+decision:
+  fallback: main
+  points:
+    route:         { engine: none }
+    tier:          { engine: none }
+    dangerous:     { engine: none, fallback: user }
+    retry_or_stop: { engine: llm, provider: claude, model: haiku, sharp_threshold: 0.8 }
+scheduler: { max_total_agents: 6, max_writers: 1, max_retries_per_task: 2 }
+context: { packet_max_tokens: 6000, failure_tail_lines: 60, main_rotate_at: 0.6 }
+quota: { on_limit: wait }
+review: { triggers: [before_plan, error_repeats, before_done], max_rounds: 2, max_replans_per_task: 1 }
+verification: {}
+approval: { require_for: [git_push, destructive_filesystem, db_migration, deployment], env_gate: debug }

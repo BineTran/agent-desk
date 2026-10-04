@@ -1,0 +1,1060 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Desk Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f5f6f8; --surface:#ffffff; --surface-2:#f0f2f6; --text:#1b2130; --muted:#5d6678; --border:#dde2ea;
+  --accent:#2c66d6; --accent-soft:#e6eefc; --ok:#1e8449; --ok-soft:#e5f5ec; --bad:#c2410c; --bad-soft:#fdeee6;
+  --need:#a15c00; --need-soft:#fff3d6;
+  /* terminal palette: always dark, like a real terminal */
+  --t-bg:#0c1018; --t-panel:#0f1521; --t-line:#2a3650; --t-text:#c9d2de; --t-dim:#6f7c90;
+  --t-main:#5fd3d3; --t-agent:#7aa2f7; --t-jev:#7ee08a; --t-arch:#c3a6ff; --t-you:#f0c25a; --t-bad:#ff7b72; --t-split:#56c7e8;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0a0d13; --surface:#121824; --surface-2:#182031; --text:#e2e7f0; --muted:#98a2b5; --border:#263149;
+    --accent:#7aa2f7; --accent-soft:#1b2640; --ok:#7ee08a; --ok-soft:#14281c; --bad:#ff9b72; --bad-soft:#2c1a14;
+    --need:#f0c25a; --need-soft:#2b2412;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a0d13; --surface:#121824; --surface-2:#182031; --text:#e2e7f0; --muted:#98a2b5; --border:#263149;
+  --accent:#7aa2f7; --accent-soft:#1b2640; --ok:#7ee08a; --ok-soft:#14281c; --bad:#ff9b72; --bad-soft:#2c1a14;
+  --need:#f0c25a; --need-soft:#2b2412;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:14px/1.5 Inter,system-ui,-apple-system,sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+code,.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace}
+
+/* ---------- top bar ---------- */
+.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--surface)}
+.top h1{font-size:17px;margin:0;font-weight:700;letter-spacing:-.01em}
+.top .sub{color:var(--muted);font-size:13px}
+.top .sp{flex:1}
+.btn{border:1px solid var(--border);background:var(--surface);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:500}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+:root[data-theme="dark"] .btn.primary{color:#0a0d13}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .btn.primary{color:#0a0d13}}
+.btn:disabled{opacity:.4;cursor:default}
+.progress{height:3px;background:var(--surface-2)}
+.progress>div{height:100%;background:var(--accent);transition:width .25s}
+
+/* ---------- layout ---------- */
+.app{display:grid;grid-template-columns:250px minmax(0,1fr) 350px;gap:16px;padding:16px 20px;max-width:1760px;margin:0 auto;align-items:start}
+@media (max-width:1280px){.app{grid-template-columns:220px minmax(0,1fr)}.explain{grid-column:2}}
+@media (max-width:880px){.app{grid-template-columns:minmax(0,1fr);padding:12px 16px}.explain{grid-column:1}}
+
+/* ---------- stepper ---------- */
+.stepper{position:sticky;top:12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px;max-height:calc(100vh - 24px);overflow:auto}
+.grp{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:12px 8px 4px}
+.grp:first-child{margin-top:4px}
+.st{display:flex;gap:8px;align-items:flex-start;width:100%;text-align:left;border:0;background:none;border-radius:8px;padding:6px 8px;font-size:13px;line-height:1.35}
+.st:hover{background:var(--surface-2)}
+.st.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.st .n{flex:none;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:600;background:var(--surface-2);color:var(--muted)}
+.st.on .n{background:var(--accent);color:#fff}
+.st .need{flex:none;margin-left:auto;font-size:10px;font-weight:700;color:var(--need);background:var(--need-soft);border-radius:4px;padding:1px 5px}
+.st .new{flex:none;font-size:10px;font-weight:700;color:var(--accent);border:1px solid var(--accent);border-radius:4px;padding:0 4px}
+.st .fbdot{flex:none;width:8px;height:8px;border-radius:50%;margin-top:6px}
+.fbdot.ok{background:var(--ok)}.fbdot.bad{background:var(--bad)}
+@media (max-width:880px){
+  .stepper{position:static;max-height:none;display:flex;gap:6px;overflow-x:auto;padding:8px}
+  .grp{display:none}
+  .st{flex:none;width:auto;white-space:nowrap}
+  .st .t{display:none}
+  .st.on .t{display:inline}
+}
+
+/* ---------- terminal ---------- */
+.stage{min-width:0}
+.termwrap{overflow-x:auto;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.18)}
+.term{min-width:940px;background:var(--t-bg);color:var(--t-text);border:1px solid #1d2638;border-radius:12px;font:12.5px/1.55 "JetBrains Mono",ui-monospace,Menlo,monospace;overflow:hidden}
+.tb{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#151b27;border-bottom:1px solid #1d2638;color:var(--t-dim);font-size:11.5px}
+.tb i{width:11px;height:11px;border-radius:50%;display:inline-block}
+.tb .ttl{flex:1;text-align:center}
+.tbody{position:relative;padding:14px 16px;min-height:680px}
+.c-main{color:var(--t-main)}.c-agent{color:var(--t-agent)}.c-jev{color:var(--t-jev)}.c-arch{color:var(--t-arch)}
+.c-you{color:var(--t-you)}.c-bad{color:var(--t-bad)}.c-dim{color:var(--t-dim)}.c-split{color:var(--t-split)}.b{font-weight:700}
+.c-ok{color:var(--t-jev)}
+
+/* shell */
+.shell .ln{white-space:pre-wrap}
+.shell .pr{color:var(--t-jev)}
+.shell .cmd{color:#fff;font-weight:600}
+.shell .file{border:1px solid var(--t-line);border-radius:6px;padding:8px 10px;margin:8px 0;background:var(--t-panel);white-space:pre}
+
+/* tui common */
+.hdr{display:flex;gap:10px;align-items:center;border-bottom:1px solid var(--t-line);padding-bottom:8px;flex-wrap:wrap}
+.hdr .sp{flex:1}
+.stat{padding:0 6px;border-radius:3px;font-weight:700}
+.stat.run{background:#16351f;color:var(--t-jev)}.stat.plan{background:#13303a;color:var(--t-main)}
+.stat.wait{background:#3a2e12;color:var(--t-you)}.stat.done{background:#16351f;color:var(--t-jev)}.stat.cancel{background:#3a1717;color:var(--t-bad)}
+.modes{display:flex;gap:6px}
+.modes span{padding:0 7px;border:1px solid var(--t-line);border-radius:3px;color:var(--t-dim)}
+.modes span.on{color:#0c1018;background:var(--t-main);border-color:var(--t-main);font-weight:700}
+.legend{color:var(--t-dim);margin:6px 0 10px;display:flex;gap:18px}
+.sq{display:inline-block;width:9px;height:9px;margin-right:6px;vertical-align:0}
+.grid{display:grid;grid-template-columns:205px 1fr;gap:16px}
+.box{border:1px solid var(--t-line);border-radius:4px;padding:8px 10px;background:var(--t-panel)}
+.box.main{border-color:#2c5b62}.box.jev{border-color:#2f5a35}.box.arch{border-color:#4a3d6e}.box.ver{border-color:#2c5b62}
+.arch .trig{margin:6px 0;padding:1px 4px}
+.arch .trig.on{background:#2a2245;color:#e6dbff}
+.arch .k{color:var(--t-dim)}
+.center{display:flex;flex-direction:column;gap:6px}
+.center .box{max-width:560px;width:100%;margin:0 auto}
+.vl{height:10px;width:1px;background:var(--t-line);margin:0 auto}
+.jrow{display:grid;grid-template-columns:230px 1fr 140px;gap:8px;align-items:center;white-space:nowrap}
+.bar{height:9px;background:#1b2433;position:relative;border-radius:1px}
+.bar>div{position:absolute;inset:0 auto 0 0}
+.spawn{text-align:center;color:var(--t-dim);margin:2px 0}
+.agents{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.card{border:1px solid #2b3d63;border-radius:4px;padding:6px 8px;background:var(--t-panel);text-align:center;min-height:86px}
+.card.queued{opacity:.6;border-style:dashed}
+.card.wait{border-color:#6b5520}
+.card.fail{border-color:#6b2a2a}
+.log{margin-top:12px}
+.log .lt{color:var(--t-dim);margin-bottom:4px}
+.lrow{display:grid;grid-template-columns:70px 78px 1fr;gap:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lrow>span:last-child{overflow:hidden;text-overflow:ellipsis}
+.keys{color:var(--t-dim);margin-top:4px}
+.keys b{color:var(--t-text)}
+
+/* composer */
+.composer{margin-top:12px}
+.cwrap{position:relative}
+.cbox{border:1px solid #3b4a68;border-radius:6px;padding:8px 12px;background:#0b1220;min-height:42px;white-space:pre-wrap}
+.cbox.focus{border-color:var(--t-you)}
+.cbox .ph{color:var(--t-dim)}
+.cbox .lab{position:absolute;top:-9px;left:10px;background:var(--t-bg);padding:0 6px;color:var(--t-dim);font-size:11.5px}
+.cbox.focus .lab{color:var(--t-you)}
+.mt{color:#9ecbff;background:#15284a;border-radius:3px;padding:0 3px}
+.url{color:#9ecbff;text-decoration:underline}
+.cur{display:inline-block;width:7px;height:14px;background:var(--t-text);vertical-align:-2px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.chip{border:1px solid var(--t-line);border-radius:3px;padding:0 6px}
+.chip i{font-style:normal;color:var(--t-you);margin-right:4px}
+.chip s{text-decoration:none;color:var(--t-dim);margin-left:4px}
+.chint{color:var(--t-dim);margin-top:4px}
+.chint b{color:var(--t-text)}
+.ac{position:absolute;left:26px;bottom:calc(100% + 4px);background:#111827;border:1px solid #3b4a68;border-radius:4px;padding:4px 0;min-width:430px;z-index:3;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.ac div{padding:1px 10px;display:flex;gap:12px}
+.ac div.cur2{background:#1d2a44;color:#fff}
+.ac .k2{color:var(--t-dim);margin-left:auto}
+
+/* home */
+.home{display:flex;flex-direction:column;min-height:640px}
+.home .welcome{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:6px;padding:20px 8px}
+
+/* plan studio */
+.studio{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:14px;margin-top:10px}
+.chat{display:flex;flex-direction:column;gap:9px;min-height:470px}
+.more{color:var(--t-dim);text-align:center;border-bottom:1px dashed var(--t-line);padding-bottom:4px}
+.msg{border-left:2px solid var(--t-line);padding:1px 0 1px 10px}
+.msg .who{font-weight:700;margin-right:6px}
+.msg.you{border-color:var(--t-you)}.msg.you .who{color:var(--t-you)}
+.msg.main{border-color:var(--t-main)}.msg.main .who{color:var(--t-main)}
+.msg.arch{border-color:var(--t-arch)}.msg.arch .who{color:var(--t-arch)}
+.msg.sys{color:var(--t-dim)}.msg.jev{border-color:#2f5a35;color:var(--t-dim)}.msg.jev .who{color:var(--t-jev)}
+.card2{border:1px solid var(--t-line);border-radius:4px;padding:6px 10px;background:var(--t-panel);margin-top:4px}
+.qcard{border-color:#6b5520;background:#14120b}
+.q{margin-top:4px}
+.opt{padding:0 6px;color:var(--t-text)}
+.opt.on{background:#2b2412;color:#fff}
+.opt.pick{color:var(--t-jev)}
+.rec{color:var(--t-you)}
+.planpane{border:1px solid #2c5b62;border-radius:4px;background:var(--t-panel);padding:8px 10px;align-self:start}
+.planpane.focus{border-color:var(--t-main);box-shadow:inset 0 0 0 1px var(--t-main)}
+.pph{display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--t-line);padding-bottom:6px;margin-bottom:4px}
+.pph .sp{flex:1}
+.psec{color:var(--t-dim);margin-top:6px}
+.pi{display:grid;grid-template-columns:42px 1fr;gap:6px;padding:1px 4px;border-radius:2px}
+.pi.sel{background:#14303a;box-shadow:inset 2px 0 0 var(--t-main)}
+.pi.pend{background:#211c0e}
+.pid{color:var(--t-dim)}
+.ann{margin:1px 0 4px 48px;padding:1px 8px;border-left:2px solid;font-size:12px}
+.ann.arch{border-color:var(--t-arch);color:#d9ccff}
+.ann.diff{border-color:var(--t-you);color:var(--t-you)}
+.ann.ok{border-color:var(--t-jev);color:var(--t-jev)}
+.ann.ref{border-color:var(--t-main);color:var(--t-main)}
+.ready div{margin:1px 0}
+
+/* overlay */
+.ov{position:absolute;inset:0;background:rgba(5,8,13,.72);display:flex;align-items:flex-start;justify-content:center;padding:34px 20px;z-index:4}
+.dlg{background:#111827;border:1px solid #3b4a68;border-radius:6px;padding:12px 14px;width:min(780px,100%);box-shadow:0 10px 40px rgba(0,0,0,.5);max-height:100%;overflow:auto}
+.dlg h3{margin:0 0 8px;font-size:12.5px;letter-spacing:.04em}
+.dlg .row{display:grid;grid-template-columns:110px 1fr;gap:10px}
+.dlg .sect{margin-top:8px;color:var(--t-dim)}
+.actions{margin-top:10px;display:flex;gap:10px;flex-wrap:wrap}
+.kbtn{border:1px solid #3b4a68;background:#18213a;color:var(--t-text);border-radius:4px;padding:3px 10px;font:inherit}
+.kbtn:hover{border-color:var(--t-you)}
+.kbtn.dim{opacity:.4;cursor:default}
+.kbtn.pri{border-color:var(--t-jev);color:var(--t-jev)}
+.add{color:var(--t-jev)}.mod{color:var(--t-you)}.del{color:var(--t-bad)}
+.input{border:1px solid #3b4a68;background:#0b1220;border-radius:4px;padding:6px 8px;color:#fff;margin:6px 0}
+pre.diff{margin:0;white-space:pre}
+.full h2{font-size:12.5px;margin:12px 0 4px;color:var(--t-main);letter-spacing:.04em}
+.full table{border-collapse:collapse;width:100%}
+.full td{padding:1px 10px 1px 0;vertical-align:top}
+
+/* ---------- explanation ---------- */
+.explain{position:sticky;top:12px;display:flex;flex-direction:column;gap:12px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.panel h2{font-size:16px;margin:0 0 2px;letter-spacing:-.01em}
+.panel .meta{color:var(--muted);font-size:12px;margin-bottom:10px}
+.sec{margin-top:12px}
+.sec h4{margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.sec.you{background:var(--need-soft);border-radius:8px;padding:8px 10px;margin-left:-4px;margin-right:-4px}
+.sec.you h4{color:var(--need)}
+.sec.you.passive{background:var(--surface-2)}
+.sec.you.passive h4{color:var(--muted)}
+.sec p{margin:0 0 6px}
+.sec ul{margin:0;padding-left:18px}
+.sec li{margin:2px 0}
+.why{font-size:12.5px;color:var(--muted);border-left:3px solid var(--border);padding-left:10px}
+.tryk{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.tryk button{border:1px solid var(--border);background:var(--surface-2);border-radius:6px;padding:3px 8px;font-size:12.5px;text-align:left}
+.tryk button:hover{border-color:var(--accent)}
+.tryk kbd{font-family:"JetBrains Mono",monospace;font-weight:700;margin-right:4px}
+.nav{display:flex;gap:8px;align-items:center}
+.nav .sp{flex:1}
+.nav .count{color:var(--muted);font-size:12px}
+.fb{display:flex;gap:6px;margin:6px 0}
+.fb button{flex:1;border:1px solid var(--border);background:var(--surface);border-radius:8px;padding:6px;font-size:13px}
+.fb button.ok.on{background:var(--ok-soft);border-color:var(--ok);color:var(--ok);font-weight:600}
+.fb button.bad.on{background:var(--bad-soft);border-color:var(--bad);color:var(--bad);font-weight:600}
+textarea{width:100%;min-height:64px;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--surface);color:var(--text);font:13px/1.45 Inter,system-ui,sans-serif;resize:vertical}
+dialog{border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);width:min(720px,92vw);padding:16px}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog textarea{min-height:320px;font-family:"JetBrains Mono",monospace;font-size:12px}
+.hint{font-size:12px;color:var(--muted)}
+
+/* v3: status bar, providers, quota, components */
+.sbar{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:5px 0 6px;border-bottom:1px dashed var(--t-line);margin-bottom:6px;font-size:12px}
+.sbar .ok{color:var(--t-jev)}.sbar .bad{color:var(--t-bad)}.sbar .sp{flex:1}
+.qb{color:var(--t-dim)}.qb.hi{color:var(--t-you)}.qb.full{color:var(--t-bad)}
+.qbar{display:inline-block;width:46px;height:7px;background:#1b2433;position:relative;border-radius:1px;vertical-align:0}
+.qbar i{position:absolute;inset:0 auto 0 0;background:var(--t-jev)}
+.qb.hi .qbar i{background:var(--t-you)}.qb.full .qbar i{background:var(--t-bad)}
+.pv{padding:0 4px;border-radius:2px}
+.pv.codex{background:#13303a;color:var(--t-main)}.pv.claude{background:#2e2140;color:#e3c7ff}
+.csum{margin-top:5px;color:var(--t-dim)}
+.src{font-size:11px;padding:0 4px;border:1px solid var(--t-line);border-radius:2px;color:var(--t-dim);white-space:nowrap}
+.src.repo{color:var(--t-you);border-color:#6b5520}.src.session{color:var(--t-split);border-color:#245a6b}.src.plugin{color:#e3c7ff;border-color:#4a3d6e}
+.cgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-top:8px}
+.cgrid .box{min-width:0;overflow-wrap:anywhere}
+.cgrid .box{padding:8px 10px}
+.cgrid .wide{grid-column:1/-1}
+.ctab{border-collapse:collapse;width:100%}
+.ctab td{padding:1px 10px 1px 0;vertical-align:top}
+.ctab td:first-child{white-space:nowrap}
+.ctitle{color:var(--t-main);font-weight:700;margin-bottom:4px}
+.eng{padding:0 4px;border-radius:2px;font-size:11.5px}
+.eng.rule{background:#1c2638;color:var(--t-text)}.eng.haiku{background:#2e2140;color:#e3c7ff}.eng.main{background:#13303a;color:var(--t-main)}.eng.user{background:#3a2e12;color:var(--t-you)}.eng.none{color:var(--t-dim)}
+.stat.quota{background:#3a1717;color:var(--t-bad)}
+</style>
+</head>
+<body>
+<div class="top">
+  <div>
+    <h1>Agent Desk — prototype user flow <span class="hint">v3 · subscription-only · decision theo config · màn COMPONENTS</span></h1>
+    <div class="sub">Session mẫu: <b>thêm optimistic concurrency control cho roster schedule</b> trên <span class="mono">~/work/roster-api</span>. Bấm phím trong terminal hoặc dùng ← → để đi tiếp.</div>
+  </div>
+  <div class="sp"></div>
+  <button class="btn" id="themeBtn" title="Đổi giao diện sáng/tối">Sáng / tối</button>
+  <button class="btn primary" id="exportBtn">Xuất góp ý</button>
+</div>
+<div class="progress"><div id="prog"></div></div>
+
+<div class="app">
+  <nav class="stepper" id="stepper" aria-label="Các bước"></nav>
+  <main class="stage">
+    <div class="termwrap"><div class="term" id="term"></div></div>
+    <p class="hint" style="margin:8px 4px 0">Terminal mô phỏng TUI của MVP (Textual). Số liệu, file và thời gian là ví dụ. Nhãn <b>MỚI</b> ở cột trái = phần thay đổi trong bản v3 theo plan hiện tại.</p>
+  </main>
+  <aside class="explain">
+    <div class="panel" id="explain"></div>
+    <div class="panel">
+      <div class="nav">
+        <button class="btn" id="prevBtn">← Trước</button>
+        <span class="count" id="count"></span>
+        <span class="sp"></span>
+        <button class="btn primary" id="nextBtn">Tiếp →</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h4 style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Bước này đúng ý bạn chưa?</h4>
+      <div class="fb"><button class="ok" id="fbOk">✓ Đúng ý</button><button class="bad" id="fbBad">✗ Chưa đúng</button></div>
+      <textarea id="fbNote" placeholder="Ghi chú: muốn khác thế nào? (lưu trên trình duyệt này)"></textarea>
+    </div>
+  </aside>
+</div>
+
+<dialog id="exportDlg">
+  <h3 style="margin:0 0 6px">Góp ý của bạn</h3>
+  <p class="hint" style="margin:0 0 8px">Copy đoạn này và dán lại vào chat để mình chỉnh thiết kế.</p>
+  <textarea id="exportText" readonly></textarea>
+  <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">
+    <button class="btn" id="copyBtn">Copy</button>
+    <button class="btn primary" id="closeDlg">Đóng</button>
+  </div>
+</dialog>
+
+<script>
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const SID = 's-7f3a', REPO = '~/work/roster-api', BR = 'agent-desk/s-7f3a', WT = '~/.agent-desk/sessions/s-7f3a/worktree';
+const PRISMA_URL = 'https://www.prisma.io/docs/orm/prisma-client/queries/transactions#optimistic-concurrency-control';
+
+/* ===================== composer ===================== */
+const mt = s => `<span class="mt">${s}</span>`;
+const chip = (t, label, meta) => `<span class="chip"><i>${t}</i>${label}${meta?`<s>${meta}</s>`:''}</span>`;
+function composer(o){
+  return `<div class="composer"><div class="cwrap">${o.popup||''}<div class="cbox ${o.focus?'focus':''}"><span class="lab">${o.label||'tin nhắn'}</span>${o.text||`<span class="ph">${o.ph||'Nhắn cho session… (@ file · / lệnh)'}</span>`}${o.focus&&o.text?'<span class="cur"></span>':''}</div></div>
+  ${o.chips?`<div class="chips">${o.chips.join('')}</div>`:''}${o.summary?`<div class="csum">${o.summary}</div>`:''}
+  <div class="chint">${o.hint||'<b>Enter</b> gửi · <b>Shift+Enter</b> xuống dòng · <b>@</b> file/thư mục · <b>/</b> lệnh · <b>Ctrl+V</b> dán ảnh · <b>Ctrl+G</b> mở $EDITOR'}</div></div>`;
+}
+const CHIPS_ALL = [chip('doc','roster-occ-prd.md','14KB'), chip('img','ảnh 1 conflict-toast.png'), chip('url','prisma.io/…/optimistic-concurrency'), chip('dir','src/roster/','12 file'), chip('file','test/roster/schedule.e2e-spec.ts')];
+
+/* ===================== TUI dashboard bits ===================== */
+const TRIG = ['before a plan','error repeats','before done'];
+function A(role, task, model, effort, status, note, prov='codex'){ return {role, task, model, effort, status, note, prov}; }
+function D(point, val, engine, p=null, sharp=null){ return {point, val, engine, p, sharp}; }
+function base(o){
+  return Object.assign({
+    status:'RUNNING', cls:'run', elapsed:'00:00', plan:'—',
+    arch:{active:-1, state:'on call', advice:'—', calls:0, tok:'0'},
+    main:'<span class="c-dim">idle</span>', dec:{count:0, rows:[]},
+    agents:[], slots:'0/6', writers:'0/1', verify:'<span class="c-dim">chưa có kết quả</span>', approvals:0, overlay:null,
+    composer:{}, sbar:{}
+  }, o);
+}
+function modes(on){ return `<span class="modes">${['PLAN','RUN','RESULT'].map(m=>`<span class="${m===on?'on':''}">${m}</span>`).join('')}</span>`; }
+
+/* ===================== status bar + config summary (one source: plugin describe()) ===================== */
+const pv = (p, m) => `<span class="pv ${p}">${p}</span>·${m}`;
+const RUNS_WITH = `Main ${pv('codex','gpt-6.1-sol')} · Explorer ${pv('codex','gpt-5.6-luna')} · Worker ${pv('claude','sonnet')} <span class="c-dim">(fallback codex)</span> · Architect ${pv('claude','opus')} <span class="c-dim">(fallback codex)</span> · Decision <span class="eng rule">rules</span>+<span class="eng haiku">haiku</span>`;
+function statusBar(o={}){
+  const q = (name, v, reset) => `<span class="qb ${v>=100?'full':v>=80?'hi':''}">${name} <span class="qbar"><i style="width:${Math.min(v,100)}%"></i></span> ${v>=100?'hết · reset '+reset:v+'%'}</span>`;
+  return `<div class="sbar"><span class="ok">● codex login</span><span class="ok">● claude login</span><span>decision <span class="eng rule">rules</span>+<span class="eng haiku">haiku</span></span><span class="ok">sandbox ✓</span>${q('codex', o.codex ?? 12)}${q('claude', o.claude ?? 15, '15:45')}${o.note?`<span class="src session">${o.note}</span>`:''}<span class="sp"></span><span class="c-dim">F2 · /config</span></div>`;
+}
+
+/* ===================== plan pane ===================== */
+const pi = (id, text, o={}) => `<div class="pi ${o.sel?'sel':''} ${o.pend?'pend':''}"><span class="pid">${id}</span><span>${text}</span></div>${o.ann||''}`;
+const ann = (cls, html) => `<div class="ann ${cls}">${html}</div>`;
+function planPane(o){
+  const v = o.v;
+  const AC = {
+    'AC-1':'PATCH /rosters/:id/schedule với revision cũ → 409 + { currentRevision } <span class="c-dim">D-001</span>',
+    'AC-2':'Update đúng revision → lưu, revision + 1',
+    'AC-3': v>=3 ? '2 update đồng thời <span class="mod">(kể cả bulk-publish vs PATCH)</span>: 1 thắng, 1 nhận 409' : '2 update đồng thời: 1 thắng, 1 nhận 409',
+    'AC-4':'Thiếu revision → vẫn update + warning <code>missing_revision</code> (1 release) <span class="c-dim">D-002</span>',
+  };
+  const T = {
+    'T1':'investigation · tìm mọi đường ghi schedule (repository, bulk-publish) <span class="c-dim">D-003</span>',
+    'T2':`implementation · cột revision${v>=2?' <span class="mod">(default 1)</span>':''} + check ở repository & bulk-publish, 409 body <span class="c-dim">← T1</span>`,
+    'T3':`implementation · test conflict, đồng thời${v>=3?' <span class="mod">(+ bulk-publish vs PATCH)</span>':''}, thiếu revision <span class="c-dim">← T1</span>`,
+  };
+  const A2 = o.ann || {};
+  const sel = o.sel || '';
+  let h = `<div class="planpane ${o.focus?'focus':''}"><div class="pph"><span class="c-main b">PLAN v${v}</span><span class="${o.lockCls||'c-dim'}">${o.badge||'nháp'}</span><span class="sp"></span><span class="c-dim">${o.hist||''}</span></div>`;
+  h += `<div class="psec">Goal</div>` + pi('', 'Chống ghi đè khi 2 người cùng sửa roster schedule');
+  h += `<div class="psec">Acceptance criteria</div>` + Object.entries(AC).map(([k,t])=>pi(k,t,{sel:sel===k, pend:(o.pend||[]).includes(k), ann:A2[k]})).join('');
+  h += `<div class="psec">Tasks <span class="c-dim">(chưa gán agent — rule route khi chạy)</span></div>` + Object.entries(T).map(([k,t])=>pi(k,t,{sel:sel===k, pend:(o.pend||[]).includes(k), ann:A2[k]})).join('');
+  h += `<div class="psec">Risks</div>` + pi('R-1', `Migration trên bảng có dữ liệu${v>=2?' <span class="mod">· row cũ cần revision = 1</span>':''}`, {ann:A2['R-1']});
+  if (v>=4) h += `<div class="psec">Ngoài phạm vi</div>` + pi('OUT', 'scripts/import-roster.ts (raw SQL) → follow-up FU-1 <span class="c-dim">D-004</span>');
+  if (o.oq) h += `<div class="psec">Câu hỏi mở</div>` + pi('Q-4', o.oq, {ann:A2['Q-4']});
+  h += `<div class="psec">Verify</div>` + pi('', 'lint · typecheck · unit (required)');
+  if (o.ready) h += `<div class="psec">Sẵn sàng duyệt?</div><div class="ready">${o.ready}</div>`;
+  return h + `</div>`;
+}
+
+/* ===================== chat messages ===================== */
+const M = (cls, who, html) => `<div class="msg ${cls}">${who?`<span class="who">${who}</span>`:''}${html}</div>`;
+
+/* ===================== overlays (run mode) ===================== */
+const OV = {};
+OV.inspect = `<div class="dlg"><h3 class="c-agent">INSPECT · worker T2 · attempt 1 · ${pv('claude','sonnet')} · CONTEXT PACKET (3.4k tokens)</h3>
+<div class="row"><span class="c-dim">Runtime</span><span>claude-cli · <code>--tools Read,Grep,Glob,Edit,Write,Bash</code> · <code>--permission-mode dontAsk</code> · sandbox: chỉ ghi trong worktree, chặn mạng</span></div>
+<div class="c-dim" style="margin-top:4px">Packet giống hệt cho mọi runtime — đổi Worker sang codex thì nội dung dưới đây không đổi.</div>
+<div class="sect">[role card]</div><div>Worker: sửa code trong worktree, chạy test liên quan, không commit/push. Trả WorkerReport.</div>
+<div class="sect">[brief]</div><div>Goal: chống ghi đè roster schedule · Constraints: không đổi route; tương thích ngược 1 release (D-002)</div>
+<div class="sect">[task]</div><div>T2 implementation — cột revision (default 1) + check ở repository & bulk-publish, 409 body</div>
+<div class="sect">[acceptance]</div><div>AC-1 · AC-2 · AC-4</div>
+<div class="sect">[decisions in force]</div><div>D-001 409 trả {currentRevision} · D-002 thiếu revision cho qua 1 release · D-003 bulk-publish trong phạm vi · D-004 import script ngoài phạm vi</div>
+<div class="sect">[inputs] — chỉ phần liên quan task này</div>
+<div>I-1 roster-occ-prd.md §4 “Conflict response”  <span class="c-dim">sessions/s-7f3a/inputs/I-1.md:58-96</span></div>
+<div>I-3 tóm tắt Prisma OCC (Researcher, có nguồn)  <span class="c-dim">1.1k token</span></div>
+<div class="c-dim">I-2 ảnh toast FE: không gửi (task backend) · I-4/I-5: đã thành relevant files</div>
+<div class="sect">[relevant files] — con trỏ, agent tự mở</div>
+<div>src/roster/roster.repository.ts:88-141      <span class="c-dim">updateSchedule — nơi ghi chính</span></div>
+<div>src/roster/bulk-publish.service.ts:120-168   <span class="c-dim">ghi hàng loạt (D-003)</span></div>
+<div>prisma/schema.prisma:212-230                 <span class="c-dim">model RosterSchedule</span></div>
+<div class="sect">[output contract]</div><div>WorkerReport {status, summary, evidence[], changed_files[], commands_run[], open_questions[], escalate?}</div>
+<div class="sect c-bad">KHÔNG có trong packet</div><div class="c-dim">hội thoại lập plan giữa bạn và Main · transcript của Explorer · log lệnh thô · plan v1–v3 cũ</div>
+<div class="actions"><button class="kbtn" data-k="Escape">[esc] Đóng</button></div></div>`;
+
+OV.approval = `<div class="dlg" style="border-color:#7a6224"><h3 class="c-you">⚠ APPROVAL REQUIRED</h3>
+<div class="row"><span class="c-dim">Agent</span><span>worker · T2 · attempt 1 · ${pv('claude','sonnet')}</span></div>
+<div class="row"><span class="c-dim">Command</span><span class="b">pnpm prisma migrate dev --name roster_revision</span></div>
+<div class="row"><span class="c-dim">Cwd</span><span>${WT} <span class="c-jev">✓ trong worktree</span></span></div>
+<div class="row"><span class="c-dim">Đi qua</span><span>hook <code>PreToolUse</code> của claude-cli → socket Agent Desk → safety policy <span class="c-dim">(codex: JSON-RPC requestApproval — cùng policy, cùng hộp thoại)</span></span></div>
+<div class="row"><span class="c-dim">Policy</span><span>approval-required <span class="c-dim">(rule <code>db_migration</code> · nguồn: .agent-desk.yaml)</span> — không gọi model</span></div>
+<div class="row"><span class="c-dim">Impact</span><span>Tạo prisma/migrations/…_roster_revision và chạy trên DATABASE_URL=postgres://localhost:5432/roster_dev. Không đụng DB ngoài localhost.</span></div>
+<div class="row"><span class="c-dim">An toàn</span><span class="c-dim">mất kết nối socket → deny (fail-closed) · lệnh không có trong allow-list → dontAsk tự từ chối</span></div>
+<div class="actions"><button class="kbtn pri" data-k="a">[a] Approve once</button><button class="kbtn" data-k="r">[r] Reject + lý do</button></div></div>`;
+
+OV.quota = `<div class="dlg" style="border-color:#7a2a2a"><h3 class="c-bad">⚠ HẠN MỨC SUBSCRIPTION · claude</h3>
+<div class="row"><span class="c-dim">Thông báo</span><span>“You've hit your session limit · resets 15:45” <span class="c-dim">(còn 1 giờ 23 phút)</span></span></div>
+<div class="row"><span class="c-dim">Đang dừng</span><span>worker T3 · ${pv('claude','sonnet')} → <span class="c-bad">interrupted</span> — <b>không tính vào retry</b>, tiến độ giữ nguyên</span></div>
+<div class="row"><span class="c-dim">Không ảnh hưởng</span><span>${pv('codex','')} còn 31% · Main, Explorer vẫn chạy được</span></div>
+<div class="sect">Chọn cách tiếp tục</div>
+<div><b>[f]</b> Chuyển mọi role đang dùng claude sang <b>fallback</b> trong config: worker → ${pv('codex','gpt-6.1-sol')} · architect → ${pv('codex','gpt-6-astra')} <span class="c-dim">— áp dụng cho phiên này, nguồn <span class="src session">session</span></span></div>
+<div class="c-dim" style="padding-left:24px">Decision <code>retry_or_stop</code>: engine haiku tạm không dùng được → tự đi <b>rules → main</b> (không cần chọn)</div>
+<div><b>[w]</b> Chờ tới 15:45 rồi tự chạy tiếp</div>
+<div><b>[m]</b> <code>/model worker …</code> chọn provider/model khác</div>
+<div class="actions"><button class="kbtn pri" data-k="f">[f] Chuyển sang fallback</button><button class="kbtn" data-k="w">[w] Chờ</button><button class="kbtn" data-k="m">[m] /model</button></div></div>`;
+
+OV.steer = `<div class="dlg"><h3 class="c-you">HỘI THOẠI · đang ở RUN</h3>
+${M('you','bạn','Thêm metric <code>roster_conflict_total</code> mỗi lần trả 409, team ops cần dashboard.')}
+${M('main','main','<span class="c-dim">kind=<b>proposal</b> · material (thêm AC) → cần bạn duyệt</span>'+
+ '<div class="card2"><div><span class="add">+ AC-5</span> Mỗi lần trả 409 tăng <code>roster_conflict_total{source}</code></div><div><span class="add">+ T2c</span> Thêm metric ở ConflictError handler ← T2 · chạy sau T3 (writers 1/1)</div><div><span class="add">+ D-006</span> nguyên văn tin nhắn của bạn</div><div class="c-dim">T3 đang chạy không bị ngắt — không chạm phạm vi T3.</div></div>')}
+<div class="c-dim" style="margin-top:6px">Không có bộ phân loại ý định riêng: tin nhắn đi thẳng tới Main, Main trả về <code>kind = answer | proposal | stop</code>.</div>
+<div class="actions"><button class="kbtn pri" data-k="a">[a] Duyệt plan v6</button><button class="kbtn" data-k="e">[e] Sửa đề xuất</button><button class="kbtn" data-k="x">[x] Bỏ</button></div></div>`;
+
+OV.stop = `<div class="dlg" style="border-color:#7a2a2a"><h3 class="c-bad">/stop · DỪNG SESSION?</h3>
+<div class="row"><span class="c-dim">Đang chạy</span><span>worker T3 · ${pv('claude','sonnet')}</span></div>
+<div class="sect">Sẽ làm</div>
+<div>1. Ngừng giao việc mới  2. Ngắt agent đang chạy (claude: SIGINT · codex: turn/interrupt)  3. Đánh dấu INTERRUPTED (không bao giờ “completed”)</div>
+<div class="sect">KHÔNG làm</div>
+<div>Rollback · xoá worktree · xoá branch · xoá commit đã có</div>
+<div class="sect">Kết quả sau khi dừng</div>
+<div>Session CANCELLED · commit 5e1d2a0 còn nguyên · thay đổi dở của T3 nằm trong worktree, chưa commit</div>
+<div class="actions"><button class="kbtn" data-k="y" style="border-color:#7a2a2a">[y] Dừng</button><button class="kbtn" data-k="n">[n] Tiếp tục chạy</button></div></div>`;
+
+/* ===================== full screens ===================== */
+const COMPONENTS = `<div class="full">
+<div class="hdr"><b>COMPONENTS</b><span class="c-dim">· cấu hình đang chạy · roster-api</span><span class="sp"></span><span class="c-dim">nguồn: <span class="src">default</span> &lt; <span class="src">global</span> &lt; <span class="src repo">repo</span> &lt; <span class="src">--set</span> &lt; <span class="src session">session</span> · hash 7c1e9a · [esc] quay lại</span></div>
+${statusBar()}
+<div class="cgrid">
+<div class="box"><div class="ctitle">Providers</div><table class="ctab">
+<tr><td>${pv('codex','')}</td><td>codex · <span class="c-ok">login ✓ ChatGPT</span> · <span class="c-dim">CLI 0.159.0</span> · quota 12%</td></tr>
+<tr><td>${pv('claude','')}</td><td>claude-cli · <span class="c-ok">login ✓ claude.ai</span> · <span class="c-dim">CLI 2.1.236</span> · quota 15%</td></tr>
+<tr><td class="c-dim">typesafe</td><td><span class="c-dim">jev · chưa bật ·</span> <span class="src plugin">plugin có sẵn</span> <span class="c-dim">cần key + policy.allow_api_key</span></td></tr>
+</table><div class="c-dim" style="margin-top:4px">policy: <b>subscription_only ✓</b> · không provider nào dùng API key</div></div>
+<div class="box"><div class="ctitle">Decision points <span class="c-dim">(rules luôn chạy trước)</span></div><table class="ctab">
+<tr><td>route</td><td>rules ✓ → <span class="eng none">none</span></td><td><span class="src">default</span></td></tr>
+<tr><td>tier</td><td>rules ✓ → <span class="eng none">none</span></td><td><span class="src">default</span></td></tr>
+<tr><td>dangerous</td><td>rules ✓ → <span class="eng none">none</span> → <span class="eng user">bạn</span></td><td><span class="src">default</span></td></tr>
+<tr><td>retry_or_stop</td><td>rules ✓ → <span class="eng haiku">claude·haiku</span> ≥0.8 → <span class="eng main">main</span></td><td><span class="src">default</span></td></tr>
+</table><div class="c-dim" style="margin-top:4px">shadow: — · đổi engine: <code>/engine retry_or_stop jev</code> (khi đã bật typesafe)</div></div>
+<div class="box wide"><div class="ctitle">Roles</div><table class="ctab">
+<tr class="c-dim"><td>role</td><td>provider · model</td><td>effort</td><td>quyền</td><td>ép bằng</td><td>nguồn</td></tr>
+<tr><td>main</td><td>${pv('codex','gpt-6.1-sol')}</td><td>high</td><td>read</td><td>codex read-only</td><td><span class="src">default</span></td></tr>
+<tr><td>explorer</td><td>${pv('codex','gpt-5.6-luna')} <span class="c-dim">tier fast</span></td><td>—</td><td>read</td><td>codex read-only</td><td><span class="src">default</span></td></tr>
+<tr><td>worker</td><td>${pv('claude','sonnet')} <span class="c-dim">tier strong · fallback codex</span></td><td>medium</td><td>write</td><td>sandbox ✓ · dontAsk · hook</td><td><span class="src repo">repo</span></td></tr>
+<tr><td>researcher</td><td>${pv('codex','gpt-5.6-luna')} <span class="c-dim">tier fast</span></td><td>—</td><td>read + network</td><td>webSearch ✓</td><td><span class="src">default</span></td></tr>
+<tr><td>architect</td><td>${pv('claude','opus')} <span class="c-dim">fallback codex·gpt-6-astra</span></td><td>—</td><td>read</td><td>tools Read,Grep,Glob</td><td><span class="src repo">repo</span></td></tr>
+</table></div>
+<div class="box"><div class="ctitle">Safety 🔒</div>
+<div>deny 7 <span class="c-dim">(mặc định 🔒, chỉ thêm được)</span> · approve 12 <span class="c-dim">(+ db_migration từ</span> <span class="src repo">repo</span><span class="c-dim">)</span> · allow 3 nhóm</div>
+<div class="c-dim" style="margin-top:4px">Bất biến 🔒: rules trước mọi quyết định · sandbox cho role ghi · khoá plan trước Worker · completion gate 6/6 · persist trước publish</div></div>
+<div class="box"><div class="ctitle">Verification</div><table class="ctab">
+<tr><td>lint</td><td><code>pnpm lint</code></td><td>required</td><td><span class="src repo">repo</span></td></tr>
+<tr><td>typecheck</td><td><code>pnpm typecheck</code></td><td>required</td><td><span class="src repo">repo</span></td></tr>
+<tr><td>unit</td><td><code>pnpm test</code></td><td>required</td><td><span class="src repo">repo</span></td></tr>
+</table></div>
+<div class="box"><div class="ctitle">Plugins đã nạp</div>
+<div>runtime: codex ✓ · claude-cli ✓ · mock</div><div>decision: none · llm ✓ · jev <span class="c-dim">(chưa bật)</span> · replay</div>
+<div>input: file · dir · doc-snapshot · url · image</div><div>sink: sqlite ✓ · jsonl · ui: tui ✓ · headless</div>
+<div class="c-dim">plugin ngoài: — (thêm bằng <code>plugins: [...]</code>)</div></div>
+<div class="box"><div class="ctitle">Vấn đề</div>
+<div class="c-ok">✓ không có vấn đề chặn</div>
+<div class="c-dim">ℹ claude không có <code>--bare</code> với subscription → ~7k token overhead mỗi lần gọi</div>
+<div class="c-dim">ℹ jev chưa bật — bật bằng config khi có key</div></div>
+</div>
+<div class="keys" style="margin-top:8px"><b>↑↓</b> chọn nhóm · <b>enter</b> chi tiết · <b>/model</b> &lt;role&gt; &lt;provider·model&gt; · <b>/engine</b> &lt;point&gt; &lt;engine&gt; · <b>esc</b> quay lại</div>
+</div>`;
+
+const RESULT = `<div class="full">
+<div class="hdr"><b>AGENT DESK</b><span class="c-dim">·</span>roster-api · ${SID}${modes('RESULT')}<span class="stat done">COMPLETED ✓</span><span>21:40</span><span class="c-dim">(bạn tương tác 9:55)</span><span class="sp"></span><span class="c-dim">plan v6 ✓</span></div>
+${statusBar({codex:47, claude:100, note:'claude roles → fallback codex (session, 14:20)'})}
+<h2>TÓM TẮT · Main, mỗi ý có bằng chứng</h2>
+<div>• roster_schedules có cột <b>revision</b> (default 1) — migration 20261003_roster_revision</div>
+<div>• updateSchedule + bulk-publish ghi với WHERE id AND revision; 0 row → <b>409 {currentRevision}</b> + metric roster_conflict_total</div>
+<div>• Thiếu revision: vẫn update + warning <code>missing_revision</code> (D-002, tạm 1 release)</div>
+<h2>ACCEPTANCE CRITERIA → BẰNG CHỨNG</h2>
+<table>
+<tr><td>AC-1</td><td>409 + currentRevision</td><td class="c-ok">✓</td><td class="c-dim">test/roster/schedule.e2e-spec.ts › rejects stale revision</td></tr>
+<tr><td>AC-2</td><td>revision + 1</td><td class="c-ok">✓</td><td class="c-dim">… › increments revision on success</td></tr>
+<tr><td>AC-3</td><td>đồng thời (cả bulk vs PATCH)</td><td class="c-ok">✓</td><td class="c-dim">… › concurrent updates: exactly one wins · bulk vs patch</td></tr>
+<tr><td>AC-4</td><td>thiếu revision → warning</td><td class="c-ok">✓</td><td class="c-dim">… › missing revision logs warning</td></tr>
+<tr><td>AC-5</td><td>metric roster_conflict_total</td><td class="c-ok">✓</td><td class="c-dim">test/metrics/roster.metrics.spec.ts › increments on 409</td></tr>
+</table>
+<h2>VERIFICATION</h2>
+<div><span class="c-ok">✓</span> pnpm lint   <span class="c-ok">✓</span> pnpm typecheck   <span class="c-ok">✓</span> pnpm test 191/191   <span class="c-dim">build: optional, không chạy</span></div>
+<h2>FILES CHANGED (8) <span class="add">+232</span> <span class="del">−31</span> · BRANCH ${BR} · 3 COMMIT</h2>
+<div class="c-dim">src/roster/roster.repository.ts +38 −9 · src/roster/bulk-publish.service.ts +17 −6 · src/roster/roster.controller.ts +21 −4 · src/metrics/roster.metrics.ts +9 · prisma/schema.prisma +2 · prisma/migrations/…/migration.sql +6 · test/fixtures/roster.seed.ts +3 −3 · test/roster/schedule.e2e-spec.ts +136 −9</div>
+<h2>DECISIONS · FOLLOW-UP</h2>
+<div>D-001 409 trả {currentRevision} <span class="c-dim">(bạn · Q-1)</span> · D-002 thiếu revision cho qua 1 release <span class="c-dim">(bạn · Q-2)</span> · D-003 bulk-publish trong phạm vi <span class="c-dim">(bạn · Q-3)</span></div>
+<div>D-004 import script ngoài phạm vi <span class="c-dim">(bạn · Q-4 từ Architect)</span> · D-005 sửa fixture, không sửa code <span class="c-dim">(architect)</span> · D-006 thêm metric <span class="c-dim">(bạn · lúc RUN)</span></div>
+<div>Follow-up: <b>FU-1</b> OCC cho scripts/import-roster.ts · Tự ack: plan v5 +T2b (non-material)</div>
+<h2>CHẠY BẰNG GÌ · THỐNG KÊ (subscription — đếm token, không tính tiền)</h2>
+<table>
+<tr><td>${pv('codex','')}</td><td>0.78M token</td><td class="c-dim">main 380k · explorer 96k · worker T3, T2c 262k · architect astra 44k (fallback)</td></tr>
+<tr><td>${pv('claude','')}</td><td>0.59M token</td><td class="c-dim">worker T2, T2b 480k · architect opus 92k · haiku 15k</td></tr>
+</table>
+<div>Decisions 21: <span class="eng rule">rule 17</span> <span class="eng haiku">haiku 2</span> <span class="eng main">main 0</span> <span class="eng user">bạn 2</span> · approvals 1 · retries 1 · architect 3/3 · <span class="c-bad">hạn mức claude chạm 1 lần</span> (14:19 → worker, architect chạy fallback codex)</div>
+${composer({label:'hỏi về kết quả', ph:'Hỏi Main về kết quả, ví dụ “giải thích thay đổi ở bulk-publish” · /new để bắt đầu việc tiếp theo'})}
+<div class="keys"><b>d</b> diff · <b>c</b> session.md · <b>F2</b> cấu hình · <span class="c-dim">bước tiếp (bạn tự chạy):</span> git -C ${REPO} merge --no-ff ${BR}</div>
+</div>`;
+
+const DIFF = `<div class="full">
+<div class="hdr"><b>DIFF</b><span class="c-dim">·</span>main@9c41e07 … ${BR}<span class="sp"></span><span class="c-dim">8 files · +232 −31 · [j/k] đổi file · [esc] quay lại</span></div>
+<div style="display:grid;grid-template-columns:270px 1fr;gap:14px;margin-top:10px">
+<div class="box"><div class="c-dim">files</div>
+<div>  prisma/schema.prisma</div><div>  prisma/migrations/…/migration.sql</div>
+<div style="background:#1d2a44">▸ src/roster/roster.repository.ts</div>
+<div>  src/roster/roster.controller.ts</div><div>  src/roster/bulk-publish.service.ts</div><div>  src/metrics/roster.metrics.ts</div>
+<div>  test/fixtures/roster.seed.ts</div><div>  test/roster/schedule.e2e-spec.ts</div>
+<div class="c-dim" style="margin-top:8px">commit: 5e1d2a0 (T2+T2b)<br>task: T2 · attempt 2<br>chạy bằng: ${pv('claude','sonnet')}<br>AC: AC-1 AC-2 AC-4</div></div>
+<div class="box"><pre class="diff">${[
+['h','@@ -88,22 +88,41 @@ export class RosterRepository {'],
+[' ','  async updateSchedule(id: string, input: ScheduleInput): Promise<Roster> {'],
+['-','    return this.db.rosterSchedule.update({'],
+['-','      where: { id },'],
+['-','      data: input.schedule,'],
+['-','    });'],
+['+','    if (input.revision === undefined) {'],
+['+','      this.log.warn("missing_revision", { id }); // D-002: tạm 1 release'],
+['+','      return this.forceUpdate(id, input.schedule);'],
+['+','    }'],
+['+','    const res = await this.db.rosterSchedule.updateMany({'],
+['+','      where: { id, revision: input.revision },'],
+['+','      data: { ...input.schedule, revision: { increment: 1 } },'],
+['+','    });'],
+['+','    if (res.count === 0) {'],
+['+','      const current = await this.db.rosterSchedule.findUnique({ where: { id } });'],
+['+','      throw new ConflictError({ currentRevision: current?.revision }); // D-001'],
+['+','    }'],
+['+','    return this.findById(id);'],
+[' ','  }'],
+].map(([t,l])=>`<span class="${t==='+'?'add':t==='-'?'del':t==='h'?'c-main':'c-dim'}">${t==='h'?'':t} ${esc(l)}</span>`).join('\n')}</pre></div></div></div>`;
+
+const DOC = `<div class="full">
+<div class="hdr"><b>session.md</b><span class="c-dim">· L2 session memory · 4.1k tokens · render từ DB, không sửa tay</span><span class="sp"></span><span class="c-dim">[esc] quay lại</span></div>
+<h2># Cấu hình đã chạy <span class="c-dim">(snapshot 7c1e9a, chỉ tên provider/model — không có thông tin đăng nhập)</span></h2>
+<div>${RUNS_WITH}</div>
+<div class="c-dim">Thay đổi trong phiên: 14:20 hạn mức claude → worker ${pv('codex','gpt-6.1-sol')}, architect ${pv('codex','gpt-6-astra')} (fallback trong config); retry_or_stop tạm dùng rules → main</div>
+<h2># Inputs <span class="c-dim">(snapshot + hash)</span></h2>
+<table>
+<tr><td>I-1</td><td>~/Downloads/roster-occ-prd.md</td><td class="c-dim">snapshot inputs/I-1.md · outline 9 mục</td></tr>
+<tr><td>I-2</td><td>ảnh conflict-toast.png</td><td class="c-dim">gửi Main dạng localImage · dùng cho Q-1</td></tr>
+<tr><td>I-3</td><td>prisma.io/…/optimistic-concurrency</td><td class="c-dim">Researcher tóm tắt 1.1k token + nguồn</td></tr>
+<tr><td>I-4</td><td>src/roster/ (12 file)</td><td class="c-dim">con trỏ @9c41e07</td></tr>
+<tr><td>I-5</td><td>test/roster/schedule.e2e-spec.ts</td><td class="c-dim">con trỏ @9c41e07</td></tr>
+</table>
+<h2># Decisions in force</h2>
+<table>
+<tr><td>D-001</td><td>409 trả {currentRevision}</td><td class="c-dim">bạn · Q-1 · dựa trên I-1 §4 + I-2</td></tr>
+<tr><td>D-002</td><td>thiếu revision cho qua 1 release</td><td class="c-dim">bạn · Q-2 · I-1 §5</td></tr>
+<tr><td>D-003</td><td>bulk-publish trong phạm vi</td><td class="c-dim">bạn · Q-3</td></tr>
+<tr><td>D-004</td><td>import script ngoài phạm vi → FU-1</td><td class="c-dim">bạn · Q-4 (Architect F1)</td></tr>
+<tr><td>D-005</td><td>lỗi do fixture, không sửa code</td><td class="c-dim">architect (claude·opus) · fp-3a9</td></tr>
+<tr><td>D-006</td><td>thêm metric roster_conflict_total</td><td class="c-dim">bạn · lúc RUN · nguyên văn đã lưu</td></tr>
+</table>
+<h2># Ghi chú đã ghim · Relevant files · Verification</h2>
+<div>N-1 Vì sao updateMany + WHERE revision thay vì SELECT … FOR UPDATE (src/db/prisma.ts:12)</div>
+<div>src/roster/roster.repository.ts 88–141 <span class="c-ok">@c71e9aa ✓</span> · src/roster/bulk-publish.service.ts 120–171 <span class="c-ok">@5e1d2a0 ✓</span></div>
+<div>AC-1…AC-5 ✓ · FU-1 OCC cho import script</div>
+<div class="keys" style="margin-top:10px">Dùng để: seed thread Main mới khi xoay thread · nguồn cho context packet · bạn đọc để hiểu session</div>
+</div>`;
+
+/* ===================== reusable run states ===================== */
+const AG_T1 = A('explorer','T1 tìm đường ghi','gpt-5.6-luna','med','done','4 call sites','codex');
+const ARCH0 = {active:-1, state:'on call', advice:'import script → Q-4', calls:1, tok:'131k'};
+const ARCH1 = {active:-1, state:'on call', advice:'wrong fixture, not the code', calls:2, tok:'226k'};
+
+/* ===================== steps ===================== */
+const STEPS = [
+/* ---- A ---- */
+{ id:'init', group:'Bắt đầu', title:'init & config check', need:true, isNew:true,
+  screen:{type:'shell', html:`<div class="ln"><span class="pr">${REPO} $</span> <span class="cmd">agent-desk init</span>   <span class="c-dim"># 1 lần cho mỗi repo</span></div>
+<div class="ln"><span class="c-ok">✓</span> phát hiện package.json (pnpm) · chọn check bắt buộc: lint, typecheck, unit · đã ghi .agent-desk.yaml</div>
+<div class="file">verification:
+  lint:      { command: pnpm lint,      required: true }
+  typecheck: { command: pnpm typecheck, required: true }
+  unit:      { command: pnpm test,      required: true }
+approval: { require_for: [db_migration] }
+roles:                                   <span class="c-dim"># bạn thêm: đổi provider chỉ bằng config</span>
+  worker:    { provider: claude, tier: strong, fallback: { provider: codex } }
+  architect: { provider: claude, model: opus,  fallback: { provider: codex, model: gpt-6-astra } }</div>
+<div class="ln"><span class="pr">${REPO} $</span> <span class="cmd">agent-desk config check</span></div>
+<div class="ln">role        provider  model          effort  access  auth      status</div>
+<div class="ln">main        codex     gpt-6.1-sol    high    read    login ✓   <span class="c-ok">ok</span></div>
+<div class="ln">explorer    codex     gpt-5.6-luna   -       read    login ✓   <span class="c-ok">ok</span></div>
+<div class="ln">worker      claude    sonnet         medium  write   login ✓   <span class="c-ok">ok</span> <span class="c-dim">(sandbox ✓ · fallback codex ✓)</span></div>
+<div class="ln">researcher  codex     gpt-5.6-luna   -       read    login ✓   <span class="c-ok">ok</span> <span class="c-dim">(webSearch ✓)</span></div>
+<div class="ln">architect   claude    opus           -       read    login ✓   <span class="c-ok">ok</span> <span class="c-dim">(fallback codex·gpt-6-astra ✓)</span></div>
+<div class="ln">decision    rules → retry_or_stop: claude·haiku      login ✓   <span class="c-ok">ok</span></div>
+<div class="ln">policy      <span class="c-ok">subscription_only ✓</span> — không provider nào dùng API key</div>
+<div class="ln">&nbsp;</div>
+<div class="ln"><span class="pr">${REPO} $</span> <span class="cmd">agent-desk</span>   <span class="c-dim"># mở TUI</span></div>` },
+  you:`<p>Chạy <code>agent-desk init</code> một lần. Muốn đổi provider của role nào thì thêm 1 dòng vào <code>.agent-desk.yaml</code>.</p>`,
+  sys:`<ul><li>Ghi nháp <code>.agent-desk.yaml</code>.</li><li><code>config check</code> kiểm tra cả hai CLI <b>đã đăng nhập subscription</b> (<code>codex login status</code>, <code>claude auth status</code>), model có tồn tại, quyền của role có được runtime ép không (sandbox, fallback).</li><li>Provider nào dùng API key bị từ chối vì <code>subscription_only</code>.</li></ul>`,
+  out:`<ul><li>Bảng role × provider × model × auth, có lỗi thì chỉ rõ role nào và cách sửa.</li></ul>` },
+
+{ id:'components', group:'Bắt đầu', title:'Xem cấu hình (COMPONENTS)', isNew:true, keys:{Escape:['compose','Quay lại màn soạn']},
+  screen:{type:'html', html:COMPONENTS},
+  you:`<p>Bấm <kbd>F2</kbd> (hoặc gõ <code>/config</code>) ở bất kỳ màn nào. <b>Không cần mở file YAML.</b></p>`,
+  sys:`<ul><li>Màn này render từ config đã resolve qua <code>describe()</code> của từng plugin — cùng nguồn với thanh trạng thái và <code>config show</code>.</li><li>Mỗi giá trị có nhãn nguồn: <code>default</code> / <code>global</code> / <code>repo</code> / <code>--set</code> / <code>session</code>.</li><li>Plugin có sẵn nhưng chưa bật (Jev) vẫn hiện, kèm điều kiện để bật.</li></ul>`,
+  out:`<ul><li>7 nhóm: Providers · Decision points · Roles · Safety · Verification · Plugins đã nạp · Vấn đề.</li></ul>`,
+  why:`“Everything is a plugin”: mọi thành phần chọn bằng config, và mọi thứ đang bật đều nhìn thấy được trên UI.` },
+
+{ id:'compose', group:'Bắt đầu', title:'Soạn yêu cầu: @file, link, ảnh', need:true, isNew:true,
+  screen:{type:'html', html:`<div class="home">
+<div class="hdr"><b>AGENT DESK</b><span class="c-dim">·</span>${REPO}<span class="c-dim">· main@9c41e07 · sạch</span><span class="sp"></span><span class="c-dim">gần đây: s-61bc CANCELLED “Đổi format export CSV”</span></div>
+${statusBar()}
+<div class="welcome">
+  <div class="c-main b">Bạn muốn làm gì trong roster-api?</div>
+  <div class="c-dim">Viết như nhắn cho một đồng nghiệp. Mention tài liệu, file, link, dán ảnh — viết dài bao nhiêu cũng được.</div>
+  <div class="c-dim">Gợi ý: /plan-only chỉ lập plan · /model đổi model của role · /resume mở session cũ · F2 xem cấu hình</div>
+</div>
+${composer({focus:true, label:'yêu cầu mới', text:
+`Thêm optimistic concurrency control cho API cập nhật roster schedule.
+Yêu cầu chi tiết ở ${mt('@~/Downloads/roster-occ-prd.md')} (mục 3–5). FE đang hiện toast như ${mt('[ảnh 1]')}.
+Tham khảo cách Prisma làm OCC: <span class="url">${PRISMA_URL}</span>
+
+Code liên quan: ${mt('@src/roster/')} và ${mt('@sched')}`,
+  popup:`<div class="ac"><div class="c-dim">@sched — fuzzy trong repo · ↑↓ chọn · Tab chèn</div><div class="cur2">test/roster/schedule.e2e-spec.ts<span class="k2">file</span></div><div>src/roster/schedule.mapper.ts<span class="k2">file</span></div><div>src/roster/dto/schedule-input.dto.ts<span class="k2">file</span></div><div>docs/schedule-publish.md<span class="k2">doc</span></div></div>`,
+  chips:CHIPS_ALL.slice(0,4), summary:'Sẽ chạy bằng: '+RUNS_WITH})}
+</div>` },
+  you:`<ul><li>Gõ nhiều dòng, <kbd>@</kbd> để chọn file, dán link/ảnh, <kbd>Ctrl+G</kbd> mở $EDITOR.</li><li>Nhìn dòng <b>“Sẽ chạy bằng”</b> dưới ô soạn để biết role nào dùng model nào trước khi gửi.</li></ul>`,
+  sys:`<ul><li>Thanh trạng thái phía trên: đăng nhập, engine quyết định, sandbox, hạn mức của từng provider.</li><li>Gợi ý file dùng <code>fuzzyFileSearch</code> của Codex app-server.</li></ul>`,
+  out:`<ul><li>Một tin nhắn đầu tiên đầy đủ ngữ cảnh, và bạn biết trước nó sẽ chạy trên đâu.</li></ul>` },
+
+{ id:'inputs', group:'Bắt đầu', title:'Gửi → hệ thống nạp inputs',
+  screen:{type:'studio', hdr:{status:'PLANNING', cls:'plan', plan:'—'},
+    chat:[
+      M('you','bạn','Thêm optimistic concurrency control cho API cập nhật roster schedule. Yêu cầu chi tiết ở '+mt('@~/Downloads/roster-occ-prd.md')+' (mục 3–5)… <span class="c-dim">[+3 dòng]</span>'),
+      M('sys','',`session <b>${SID}</b> · worktree ${WT} · branch ${BR} · config snapshot 7c1e9a`),
+      M('sys','', '<div class="card2"><div class="b">INPUTS · đã lưu vào session</div>'+
+        '<div><span class="c-you">I-1</span> doc  ~/Downloads/roster-occ-prd.md <span class="c-dim">14KB · ngoài repo → snapshot vào session · outline 9 mục</span></div>'+
+        '<div><span class="c-you">I-2</span> img  conflict-toast.png <span class="c-dim">→ gửi Main dạng localImage</span></div>'+
+        '<div><span class="c-you">I-3</span> url  prisma.io/…/optimistic-concurrency <span class="c-dim">→ Researcher '+pv('codex','gpt-5.6-luna')+' <span class="c-ok">✓ tóm tắt 1.1k token + nguồn</span></span></div>'+
+        '<div><span class="c-you">I-4</span> dir  src/roster/ <span class="c-dim">12 file · chỉ lưu con trỏ @9c41e07</span></div>'+
+        '<div><span class="c-you">I-5</span> file test/roster/schedule.e2e-spec.ts <span class="c-dim">con trỏ</span></div></div>'),
+      M('main','main','Đang đọc I-1…I-5 và các file liên quan trong repo…'),
+    ],
+    plan:`<div class="planpane"><div class="pph"><span class="c-main b">PLAN</span><span class="c-dim">chưa có</span></div><div class="c-dim" style="padding:20px 4px">Main sẽ hỏi những điểm chưa rõ trước, rồi mới lập plan ở đây.</div></div>`,
+    composer:{ph:'Nhắn thêm trong lúc Main đọc… (@ file · / lệnh)'}},
+  you:`<p>Bấm <kbd>Enter</kbd> để gửi. Sau đó chỉ xem.</p>`,
+  sys:`<ul><li>Tạo session, worktree, branch riêng; lưu snapshot cấu hình (chỉ tên provider/model, không có thông tin đăng nhập).</li><li>Mỗi mention thành input có ID (I-1…I-5).</li></ul>`,
+  out:`<ul><li>Màn hình chuyển sang <b>PLAN</b>: chat bên trái, plan bên phải.</li></ul>` },
+
+/* ---- B ---- */
+{ id:'clarify', group:'Lập plan (hội thoại)', title:'Main hỏi lại trước khi lập plan', need:true, keys:{'1':['plan','Chọn ① (đề xuất)']},
+  screen:{type:'studio', hdr:{status:'WAITING YOU', cls:'wait', plan:'—'},
+    chat:[
+      M('main','main','Đã đọc xong. Trước khi lập plan, cần bạn chốt 3 điểm (có đề xuất dựa trên tài liệu):'+
+        '<div class="card2 qcard">'+
+        '<div class="q b">Q-1 409 trả gì cho FE?</div><div class="opt pick">✓ ① { currentRevision } <span class="rec">(đề xuất — I-1 §4: FE tự merge; I-2: toast có nút “tải lại”)</span></div>'+
+        '<div class="q b">Q-2 Client mobile cũ chưa gửi revision thì sao?</div><div class="opt pick">✓ ① Cho qua + warning trong 1 release <span class="rec">(đề xuất — I-1 §5: app v3.2 còn 18% user)</span></div>'+
+        '<div class="q b">Q-3 bulk-publish cũng ghi schedule (src/roster/bulk-publish.service.ts:120) — có trong phạm vi?</div>'+
+        '<div class="opt on">▸ ① Có, áp dụng cùng cơ chế <span class="rec">(đề xuất)</span></div><div class="opt">  ② Không, tạo follow-up</div><div class="opt">  ③ Trả lời khác…</div>'+
+        '<div class="c-dim" style="margin-top:4px">1–3 chọn · Enter xác nhận · gõ để trả lời tự do</div></div>'),
+    ],
+    plan:`<div class="planpane"><div class="pph"><span class="c-main b">PLAN</span><span class="c-dim">chờ 1 câu trả lời</span></div><div class="c-dim" style="padding:12px 4px">Q-1 → D-001 ✓<br>Q-2 → D-002 ✓<br>Q-3 → …</div></div>`,
+    composer:{ph:'Hoặc gõ câu trả lời tự do, hỏi lại Main…'}},
+  you:`<p>Chọn đáp án bằng phím số, hoặc gõ câu trả lời tự do.</p>`,
+  sys:`<ul><li>Main không đoán những điểm ảnh hưởng tới interface: hỏi trước, mỗi câu có đề xuất kèm bằng chứng.</li><li>Mỗi câu trả lời thành decision D-xxx lưu nguyên văn.</li></ul>`,
+  out:`<ul><li>Các quyết định quan trọng được chốt trước khi có plan.</li></ul>` },
+
+{ id:'plan', group:'Lập plan (hội thoại)', title:'Plan v1 + Architect góp ý',
+  screen:{type:'studio', more:true, hdr:{status:'PLANNING', cls:'plan', plan:'v2 nháp'}, arch:'reviewing',
+    chat:[
+      M('you','bạn','①'),
+      M('sys','','D-001, D-002, D-003 đã ghi'),
+      M('main','main','Plan v1 ở bên phải: 4 AC, 3 task. Architect đang review…'),
+      M('arch','architect','<span class="c-dim">'+pv('claude','opus')+' · read-only</span> · <span class="c-bad b">F1 major</span> scripts/import-roster.ts:40-88 ghi schedule bằng raw SQL, bỏ qua revision · <span class="mod b">F2 minor</span> row cũ sẽ có revision NULL.'),
+      M('main','main','F2 đã sửa → <b>plan v2</b> (T2: default 1). F1 là quyết định phạm vi nên <b>chuyển thành Q-4 cho bạn</b>.'),
+    ],
+    plan:planPane({v:2, badge:'nháp · 1 câu hỏi mở', hist:'v1 → v2', oq:'import script ghi raw SQL: trong hay ngoài phạm vi?',
+      ann:{'T2':ann('diff','~ default 1 (Architect F2, Main đã sửa)'), 'Q-4':ann('arch','từ Architect F1 · evidence scripts/import-roster.ts:40-88')}}),
+    composer:{}},
+  you:`<p>Đọc plan bên phải. Chưa cần làm gì.</p>`,
+  sys:`<ul><li>Architect chạy trên <b>claude·opus</b> (theo <code>.agent-desk.yaml</code>) → review khác hãng với Main (codex).</li><li>Finding kỹ thuật → Main tự sửa; finding phạm vi → câu hỏi mở cho bạn.</li></ul>`,
+  out:`<ul><li>Plan v2 có ghi chú tại chỗ, kèm câu hỏi mở.</li></ul>` },
+
+{ id:'discuss', group:'Lập plan (hội thoại)', title:'Hỏi sâu về plan (không đổi plan)', need:true, keys:{p:['comment','Ghim câu trả lời thành ghi chú']},
+  screen:{type:'studio', more:true, hdr:{status:'PLANNING', cls:'plan', plan:'v2 nháp'},
+    chat:[
+      M('main','main','F2 đã sửa → plan v2. F1 chuyển thành Q-4 cho bạn…'),
+      M('you','bạn','Tại sao T2 dùng updateMany + WHERE revision mà không dùng transaction với SELECT … FOR UPDATE? Có an toàn với bulk-publish đang chạy trong transaction không?'),
+      M('main','main','<span class="c-dim">kind=<b>answer</b> · plan không đổi</span><div>• updateMany + WHERE id AND revision là <b>1 câu lệnh atomic</b>, không giữ lock giữa đọc và ghi.</div><div>• Codebase không dùng raw SQL lock; Prisma không có helper FOR UPDATE <span class="c-dim">(src/db/prisma.ts:12)</span>.</div><div>• bulk-publish đã chạy trong <code>$transaction</code> <span class="c-dim">(bulk-publish.service.ts:120)</span>; updateMany bên trong vẫn kiểm revision từng row → an toàn.</div><div class="c-dim" style="margin-top:4px">[p] ghim thành ghi chú session · [r] đổi thành yêu cầu sửa plan</div>'),
+    ],
+    plan:planPane({v:2, badge:'nháp · 1 câu hỏi mở', hist:'v1 → v2', sel:'T2', oq:'import script ghi raw SQL: trong hay ngoài phạm vi?',
+      ann:{'T2':ann('ref','Main đang trả lời về mục này'), 'Q-4':ann('arch','từ Architect F1')}}),
+    composer:{}},
+  you:`<p>Hỏi bất cứ điều gì về plan. Câu trả lời hay thì bấm <kbd>p</kbd> để ghim.</p>`,
+  sys:`<ul><li>Tin nhắn đi thẳng tới Main; Main trả về <code>kind=answer</code> nên plan giữ nguyên. <b>Không cần bộ phân loại ý định riêng</b> (trước đây là Jev).</li><li>Mục đang được nói tới được tô sáng bên plan.</li></ul>`,
+  out:`<ul><li>Bạn hiểu rõ lý do trước khi duyệt; ghi chú đã ghim vào <code>session.md</code>.</li></ul>` },
+
+{ id:'comment', group:'Lập plan (hội thoại)', title:'Comment vào một mục của plan', need:true, keys:{a:['approve','Chấp nhận thay đổi']},
+  screen:{type:'studio', more:true, hdr:{status:'PLANNING', cls:'plan', plan:'v2 → v3?'}, focusPlan:true,
+    chat:[
+      M('sys','','N-1 đã ghim: “vì sao updateMany…”'),
+      M('you','bạn','<span class="c-dim">[comment trên T3]</span> Thêm case bulk-publish và PATCH chạy cùng lúc trên cùng roster.'),
+      M('main','main','<span class="c-dim">kind=<b>proposal</b> · non-material</span> Đề xuất v2 → v3 (tô vàng bên phải):<div class="card2"><div><span class="mod">~ T3</span> + case bulk-publish vs PATCH đồng thời</div><div><span class="mod">~ AC-3</span> “2 update đồng thời (kể cả bulk-publish vs PATCH)”</div><div class="c-dim">Không đổi interface · không thêm task</div></div><div class="actions"><button class="kbtn pri" data-k="a">[a] Chấp nhận</button><button class="kbtn" data-k="e">[e] Sửa đề xuất</button><button class="kbtn" data-k="x">[x] Bỏ</button></div>'),
+    ],
+    plan:planPane({v:3, badge:'đề xuất · chưa chấp nhận', lockCls:'c-you', hist:'v2 → v3', sel:'T3', focus:true, pend:['T3','AC-3'], oq:'import script ghi raw SQL: trong hay ngoài phạm vi?',
+      ann:{'T3':ann('diff','comment của bạn → đề xuất của Main'), 'Q-4':ann('arch','từ Architect F1')}}),
+    composer:{label:'comment · T3', focus:true, text:'Thêm case bulk-publish và PATCH chạy cùng lúc trên cùng roster.'}},
+  you:`<p><kbd>Tab</kbd> sang plan, <kbd>↑↓</kbd> chọn mục, <kbd>c</kbd> để comment trên mục đó. Main đề xuất, bạn <b>chấp nhận / sửa / bỏ</b>.</p>`,
+  sys:`<ul><li>Main trả về <code>kind=proposal</code>; đề xuất hiện thành diff tô vàng, chỉ khi bạn chấp nhận mới tạo version mới.</li></ul>`,
+  out:`<ul><li>Mỗi version có lịch sử: ai yêu cầu, vì sao.</li></ul>` },
+
+{ id:'approve', group:'Lập plan (hội thoại)', title:'Câu hỏi mở → “Sẽ chạy bằng” → /approve', need:true, isNew:true, keys:{'Enter':['run','Gửi /approve']},
+  screen:{type:'studio', more:true, hdr:{status:'WAITING YOU', cls:'wait', plan:'v4 sẵn sàng'},
+    chat:[
+      M('sys','','plan v3 ✓ (bạn chấp nhận thay đổi T3, AC-3)'),
+      M('main','main','Còn Q-4 trước khi duyệt:<div class="card2 qcard"><div class="q b">Q-4 scripts/import-roster.ts ghi raw SQL, bỏ qua revision (Architect F1)</div><div class="opt pick">✓ ① Ngoài phạm vi + tạo follow-up FU-1 <span class="rec">(đề xuất — script chỉ chạy lúc onboarding khách mới)</span></div><div class="opt">  ② Đưa vào T2</div><div class="opt">  ③ Bỏ qua</div></div>'),
+      M('sys','','D-004 đã ghi · plan v4 (+ Ngoài phạm vi)'),
+      M('main','main','Plan v4 sẵn sàng. Không còn câu hỏi chặn. Gõ <b>/approve</b> để chạy.'),
+    ],
+    plan:planPane({v:4, badge:'sẵn sàng duyệt', lockCls:'c-you', hist:'v1 → v4',
+      ready:'<div><span class="c-ok">✓</span> 0 câu hỏi mở chặn (Q-1…Q-4 → D-001…D-004)</div><div><span class="c-ok">✓</span> Architect: F1 → D-004 · F2 đã sửa</div><div><span class="c-ok">✓</span> 4 AC · 3 task · verify: lint, typecheck, unit</div>'+
+        '<div style="margin-top:4px"><span class="c-ok">✓</span> <b>Sẽ chạy bằng</b> <span class="c-dim">(F2 để xem chi tiết)</span></div>'+
+        `<div style="padding-left:16px">Main ${pv('codex','gpt-6.1-sol')} · Explorer ${pv('codex','gpt-5.6-luna')}</div>`+
+        `<div style="padding-left:16px">Worker ${pv('claude','sonnet')} <span class="c-dim">fallback codex</span> · Architect ${pv('claude','opus')} <span class="c-dim">fallback codex</span></div>`+
+        `<div style="padding-left:16px">Decision <span class="eng rule">rules</span> → retry_or_stop <span class="eng haiku">haiku</span> → main</div>`+
+        '<div class="c-dim">Duyệt = khoá plan v4 (hash 9f2c1a) → Worker mới được chạy</div>'}),
+    composer:{focus:true, text:'/ap', popup:`<div class="ac"><div class="cur2">/approve<span class="k2">khoá plan v4 và chạy</span></div><div>/review<span class="k2">gọi Architect review lại</span></div><div>/model<span class="k2">đổi model của role trước khi chạy</span></div><div>/diff-plan v1 v4<span class="k2">so sánh version</span></div></div>`}},
+  you:`<p>Trả lời câu hỏi mở còn lại, xem mục <b>“Sẽ chạy bằng”</b>, rồi gõ <code>/approve</code>. Muốn đổi model trước khi chạy thì dùng <code>/model</code>.</p>`,
+  sys:`<ul><li>Checklist “sẵn sàng duyệt”: còn câu hỏi chặn thì <code>/approve</code> bị từ chối.</li><li>Mục <b>“Sẽ chạy bằng”</b> lấy từ config đã resolve — bạn thấy role nào chạy provider/model nào ngay trước khi tốn hạn mức.</li></ul>`,
+  out:`<ul><li>Plan v4 đã khoá. Màn hình chuyển sang <b>RUN</b>.</li></ul>` },
+
+/* ---- C ---- */
+{ id:'run', group:'Thực thi', title:'RUN: rule route → Explorer → Worker', isNew:true,
+  screen:{type:'tui', state:base({elapsed:'09:07', plan:'v4 ✓', arch:ARCH0, sbar:{codex:24, claude:31},
+    main:'plan v4 ✓ · chờ kết quả', dec:{count:4, rows:[D('route T1','explorer','rule'),D('route T2','worker','rule'),D('tier T2','strong','rule')]},
+    agents:[AG_T1, A('worker','T2 revision + 409','sonnet','med','running','sandbox ✓ · dontAsk','claude'), A('worker','T3 test conflict','sonnet','med','queued','writers 1/1','claude')], slots:'1/6', writers:'1/1'})},
+  log:[['14:11:02','you','/approve · plan v4 khoá (9f2c1a)'],['14:11:03','rule','route T1 → explorer (kind=investigation)'],['14:12:15','explorer','T1 done · 4 call sites → relevant files +4'],['14:12:16','rule','route T2 → worker · tier strong (requires_write)'],['14:12:16','rule','T3 queued · writers 1/1'],['14:12:17','worker','T2 started · claude·sonnet · sandbox ✓ dontAsk']],
+  you:`<p>Chỉ xem.</p>`,
+  sys:`<ul><li>Khung <b>DECISION · fork layer</b> (trước là JEV): mỗi dòng ghi engine quyết định. <code>route</code> và <code>tier</code> là <span class="mono">rule</span> — không gọi model, không tốn token.</li><li>Thẻ agent ghi rõ provider: Explorer chạy codex, Worker chạy claude (theo config).</li></ul>`,
+  out:`<ul><li>Agent tree như video; thanh trạng thái cập nhật hạn mức từng provider.</li></ul>` },
+
+{ id:'inspect', group:'Thực thi', title:'Xem context của Worker', keys:{Escape:['approval','Đóng inspect, chạy tiếp']},
+  screen:{type:'tui', state:base({elapsed:'09:30', plan:'v4 ✓', arch:ARCH0, sbar:{codex:24, claude:33},
+    main:'plan v4 ✓ · chờ kết quả', dec:{count:4, rows:[D('route T1','explorer','rule'),D('route T2','worker','rule'),D('tier T2','strong','rule')]},
+    agents:[AG_T1, A('worker','T2 revision + 409','sonnet','med','running','sandbox ✓ · dontAsk','claude'), A('worker','T3 test conflict','sonnet','med','queued','writers 1/1','claude')], slots:'1/6', writers:'1/1', overlay:OV.inspect})},
+  log:[['14:12:40','worker','T2 edit src/roster/roster.repository.ts']],
+  you:`<p>Tuỳ chọn: chọn agent rồi bấm <kbd>enter</kbd> để xem đúng những gì nó nhận được.</p>`,
+  sys:`<ul><li>Packet dựng từ session memory, <b>giống hệt cho mọi runtime</b>; dòng Runtime cho biết quyền được ép bằng gì (tools, dontAsk, sandbox).</li><li>Không gồm hội thoại lập plan.</li></ul>`,
+  out:`<ul><li>Bạn kiểm tra được inputs, decisions và giới hạn quyền của agent.</li></ul>` },
+
+{ id:'approval', group:'Thực thi', title:'Duyệt lệnh nguy hiểm (qua hook)', need:true, isNew:true, keys:{a:['repeat','Approve once'], r:['repeat','Reject (flow mẫu vẫn đi tiếp như đã approve)']},
+  screen:{type:'tui', state:base({status:'WAITING YOU', cls:'wait', elapsed:'10:39', plan:'v4 ✓', arch:ARCH0, sbar:{codex:24, claude:38},
+    main:'plan v4 ✓ · chờ kết quả', dec:{count:5, rows:[D('route T2','worker','rule'),D('tier T2','strong','rule'),D('dangerous? migrate','cần bạn','user')]},
+    agents:[AG_T1, A('worker','T2 revision + 409','sonnet','med','wait','chờ approval','claude'), A('worker','T3 test conflict','sonnet','med','queued','writers 1/1','claude')], slots:'1/6', writers:'1/1', approvals:1, overlay:OV.approval})},
+  log:[['14:13:02','hook','rg "updateSchedule" src → allow (allow-list)'],['14:13:41','hook','pnpm prisma migrate dev → approve-list (db_migration)'],['14:13:41','policy','dangerous → cần bạn (không gọi model)']],
+  you:`<p><b>Approve once</b> (<kbd>a</kbd>) hoặc <b>Reject</b> (<kbd>r</kbd>).</p>`,
+  sys:`<ul><li>Worker chạy trên Claude nên lệnh đi qua hook <code>PreToolUse</code> → socket của Agent Desk → <b>cùng safety policy và cùng hộp thoại</b> như khi Worker chạy Codex.</li><li>Quyết định ở đây hoàn toàn bằng rule; lệnh rủi ro luôn tới bạn.</li></ul>`,
+  out:`<ul><li>Chỉ lệnh có rủi ro mới làm phiền bạn, kèm đủ thông tin để quyết.</li></ul>` },
+
+{ id:'repeat', group:'Thực thi', title:'Test fail → Haiku → lỗi lặp → Architect', isNew:true,
+  screen:{type:'tui', state:base({elapsed:'15:38', plan:'v4 ✓', sbar:{codex:26, claude:61},
+    arch:{active:1, state:'advising', advice:'wrong fixture, not the code', calls:2, tok:'226k'},
+    main:'nhận review từ Architect', dec:{count:8, rows:[D('retry_or_stop T2','retry','haiku',0.86,true),D('retry_or_stop T2','architect','rule'),D('dangerous? migrate','approved','user')]},
+    agents:[AG_T1, A('worker','T2 · attempt 2','sonnet','med','fail','fp-3a9 lặp lại','claude'), A('worker','T3 test conflict','sonnet','med','queued','writers 1/1','claude')], slots:'0/6', writers:'0/1',
+    verify:'<span class="c-ok">✓</span> lint <span class="c-ok">✓</span> typecheck <span class="c-bad">✗ unit (1)</span> <span class="c-dim">fp-3a9 ×2</span>'})},
+  log:[['14:14:12','you','approve once ✓'],['14:15:31','verify','✓ lint ✓ typecheck ✗ unit (1) · fp-3a9'],['14:15:31','rule','không phải lỗi môi trường → hỏi haiku'],['14:15:40','haiku','retry_or_stop T2 → retry  p=0.86 sharp → code'],['14:17:05','verify','✗ unit (1) · fp-3a9 (lặp lại)'],['14:17:05','rule','same fingerprint ×2 → architect (claude·opus)'],['14:17:48','architect','advice: wrong fixture, not the code → Main']],
+  you:`<p>Chỉ xem.</p>`,
+  sys:`<ul><li>Lần 1: rule kiểm tra trước — <b>không phải lỗi môi trường</b> (nếu là <code>No module named …</code> thì dừng và hỏi bạn ngay, không retry) → mới hỏi <b>Haiku</b> (~9 giây): retry 0.86, trên ngưỡng 0.8 nên code thực thi.</li><li>Lần 2 trùng fingerprint → <b>rule</b> gọi Architect, không hỏi model.</li></ul>`,
+  out:`<ul><li>Bạn thấy rõ quyết định nào do rule, quyết định nào do model, với xác suất bao nhiêu.</li></ul>`,
+  why:`Đổi Haiku sang Jev về sau chỉ là sửa <code>decision.points.retry_or_stop.engine</code>; khung này sẽ ghi “jev” thay “haiku”.` },
+
+{ id:'fix', group:'Thực thi', title:'Main sửa plan → pass',
+  screen:{type:'tui', state:base({elapsed:'17:11', plan:'v5 ✓ (auto-ack)', arch:ARCH1, sbar:{codex:28, claude:84},
+    main:'plan v5 · +T2b sửa fixture · non-material', dec:{count:11, rows:[D('route T2b','worker','rule'),D('route T3','worker','rule'),D('tier T3','strong','rule')]},
+    agents:[A('worker','T2+T2b','sonnet','med','done','commit 5e1d2a0','claude'), A('worker','T3 test conflict','sonnet','med','running','—','claude'), AG_T1], slots:'1/6', writers:'1/1',
+    verify:'<span class="c-ok">✓</span> lint <span class="c-ok">✓</span> typecheck <span class="c-ok">✓</span> unit 186/186'})},
+  log:[['14:17:59','main','D-005 · plan v5 +T2b sửa fixture · non-material → auto-ack'],['14:19:10','verify','✓ lint ✓ typecheck ✓ unit 186/186'],['14:19:11','git','commit 5e1d2a0 T2+T2b'],['14:19:12','rule','route T3 → worker · tier strong'],['14:19:13','worker','T3 started · claude·sonnet']],
+  you:`<p>Chỉ xem. Không cần duyệt lại vì thay đổi là <b>non-material</b>.</p>`,
+  sys:`<ul><li>Main biến lời khuyên thành task T2b; pass thì commit lên branch session.</li><li>Thanh hạn mức claude đã lên 84% (vàng).</li></ul>`,
+  out:`<ul><li>Commit <code>5e1d2a0</code> trên <code>${BR}</code>.</li></ul>` },
+
+{ id:'quota', group:'Thực thi', title:'Hết hạn mức Claude → chuyển fallback', need:true, isNew:true, keys:{f:['steer','Chuyển các role claude sang fallback']},
+  screen:{type:'tui', state:base({status:'WAITING_QUOTA', cls:'quota', elapsed:'17:52', plan:'v5 ✓', arch:ARCH1, sbar:{codex:31, claude:100},
+    main:'chờ bạn chọn cách tiếp tục', dec:{count:12, rows:[D('route T3','worker','rule'),D('quota claude','WAITING_QUOTA','rule'),D('fallback worker','codex?','user')]},
+    agents:[A('worker','T2+T2b','sonnet','med','done','commit 5e1d2a0','claude'), A('worker','T3 test conflict','sonnet','med','interrupted','hạn mức · không tính retry','claude'), AG_T1], slots:'0/6', writers:'0/1',
+    verify:'<span class="c-ok">✓</span> lint <span class="c-ok">✓</span> typecheck <span class="c-ok">✓</span> unit 186/186', overlay:OV.quota})},
+  log:[['14:19:52','worker','T3 · claude: "You\'ve hit your session limit · resets 15:45"'],['14:19:52','rule','quota → WAITING_QUOTA · T3 interrupted (không tính retry)']],
+  you:`<p>Chọn: <kbd>f</kbd> chuyển sang provider fallback, <kbd>w</kbd> chờ reset, hoặc <code>/model</code> chọn khác.</p>`,
+  sys:`<ul><li>Hết hạn mức là <b>trạng thái</b>, không phải lỗi: session chuyển <code>WAITING_QUOTA</code>, task đang chạy là <code>interrupted</code>, không bị tính là một lần thử thất bại.</li><li>Provider còn hạn mức (codex) không bị ảnh hưởng.</li></ul>`,
+  out:`<ul><li>Không mất tiến độ; bạn quyết đi tiếp bằng gì.</li></ul>`,
+  why:`Đổi provider giữa phiên chỉ là một thay đổi config với nguồn <code>session</code> — đúng tinh thần “everything is a plugin”.` },
+
+{ id:'steer', group:'Thực thi', title:'Nhắn giữa lúc chạy (đổi ý)', need:true, keys:{a:['done','Duyệt plan v6']},
+  screen:{type:'tui', state:base({status:'WAITING YOU', cls:'wait', elapsed:'18:41', plan:'v6 · chờ duyệt', arch:ARCH1, sbar:{codex:38, claude:100, note:'claude roles → fallback codex (session)'},
+    main:'kind=proposal → <span class="c-main">plan v6</span>', dec:{count:13, rows:[D('quota claude','WAITING_QUOTA','rule'),D('fallback worker','codex','user'),D('route T3','worker','rule')]},
+    agents:[A('worker','T2+T2b','sonnet','med','done','commit 5e1d2a0','claude'), A('worker','T3 test conflict','gpt-6.1-sol','med','running','chạy lại trên codex','codex'), AG_T1], slots:'1/6', writers:'1/1',
+    verify:'<span class="c-ok">✓</span> lint <span class="c-ok">✓</span> typecheck <span class="c-ok">✓</span> unit 186/186', overlay:OV.steer,
+    composer:{focus:true, text:'Thêm metric roster_conflict_total mỗi lần trả 409, team ops cần dashboard.'}})},
+  log:[['14:20:05','you','[f] fallback: worker → codex·gpt-6.1-sol, architect → codex·gpt-6-astra · nguồn session'],['14:20:06','worker','T3 restarted · codex·gpt-6.1-sol'],['14:20:40','you','"Thêm metric roster_conflict_total…"'],['14:20:52','main','kind=proposal · plan v6 · +AC-5 · material → cần bạn duyệt']],
+  you:`<p>Gõ vào ô chat bất cứ lúc nào. Thay đổi lớn thì duyệt lại (<kbd>a</kbd>).</p>`,
+  sys:`<ul><li>Thanh trạng thái hiện <span class="mono">claude roles → fallback codex (session)</span>; thẻ T3 giờ là codex.</li><li>Tin nhắn đi thẳng tới Main; <code>kind=proposal</code> + thêm AC = material → cần bạn duyệt.</li></ul>`,
+  out:`<ul><li>Plan v6 (+AC-5, +T2c), D-006 lưu nguyên văn lời bạn.</li></ul>` },
+
+/* ---- D ---- */
+{ id:'done', group:'Hoàn tất', title:'Architect trước done + gate',
+  screen:{type:'tui', state:base({status:'VERIFYING', cls:'plan', elapsed:'21:21', plan:'v6 ✓', sbar:{codex:47, claude:100, note:'claude roles → fallback codex (session)'},
+    arch:{active:2, state:'advising', advice:'approve · 0 blocking', calls:3, tok:'352k', pm:['codex','gpt-6-astra'], fb:true},
+    main:'viết tóm tắt cuối', dec:{count:21, rows:[D('route T2c','worker','rule'),D('tier T2c','strong','rule'),D('gate','6/6','rule')]},
+    agents:[A('worker','T3 test conflict','gpt-6.1-sol','med','done','commit 8b0c4f1','codex'),A('worker','T2c metric','gpt-6.1-sol','med','done','commit c71e9aa','codex'),A('architect','before done','gpt-6-astra','—','done','APPROVE (fallback)','codex')], slots:'0/6', writers:'0/1',
+    verify:'<span class="c-ok">✓</span> lint <span class="c-ok">✓</span> typecheck <span class="c-ok">✓</span> unit 191/191 · <span class="c-ok">completion gate 6/6</span>'})},
+  log:[['14:20:58','you','duyệt plan v6 ✓'],['14:21:50','verify','✓ T3 · commit 8b0c4f1'],['14:22:50','verify','✓ T2c · commit c71e9aa · ✓ all'],['14:22:51','rule','before_done → architect (fallback codex·gpt-6-astra)'],['14:23:30','architect','APPROVE · 0 blocking'],['14:23:31','gate','completion gate ✓ 6/6'],['14:23:50','main','final summary']],
+  you:`<p>Chỉ xem.</p>`,
+  sys:`<ul><li>Claude vẫn hết hạn mức (reset 15:45) nên review “before done” chạy bằng <b>fallback</b> <span class="mono">codex·gpt-6-astra</span> — panel Architect và log ghi rõ điều này.</li><li><b>Completion gate</b> 6 điều kiện, tất cả bằng rule.</li></ul>`,
+  out:`<ul><li>Đủ 6/6 mới được COMPLETED.</li></ul>` },
+
+{ id:'result', group:'Hoàn tất', title:'Kết quả cuối', need:true, isNew:true, keys:{d:['diff','Xem diff'], c:['doc','Xem session.md']},
+  screen:{type:'html', html:RESULT},
+  you:`<p>Đọc kết quả. Hỏi tiếp Main ngay trong ô chat. Bạn tự quyết merge.</p>`,
+  sys:`<ul><li>Main viết tóm tắt có bằng chứng; harness ghép phần còn lại từ dữ liệu thật.</li><li>Mục <b>Chạy bằng gì</b>: token theo provider và role, số quyết định theo engine, lần chạm hạn mức.</li></ul>`,
+  out:`<ul><li><b>Output chính:</b> branch có commit đã verify, AC → bằng chứng, decisions, follow-up, và minh bạch về việc mỗi phần chạy trên đâu.</li></ul>`,
+  why:`Subscription nên hiển thị token thay vì tiền.` },
+
+{ id:'diff', group:'Hoàn tất', title:'Xem diff', keys:{Escape:['doc','Quay lại → xem session.md']},
+  screen:{type:'html', html:DIFF},
+  you:`<p>Duyệt từng file bằng <kbd>j</kbd>/<kbd>k</kbd>.</p>`,
+  sys:`<ul><li>Mỗi file ghi rõ commit, task, AC liên quan và provider/model đã viết ra nó.</li></ul>`,
+  out:`<ul><li>Comment trong code trích decision ID.</li></ul>` },
+
+{ id:'doc', group:'Hoàn tất', title:'Xem session.md (context)', keys:{Escape:['later','Quay lại → xem lại & merge']},
+  screen:{type:'html', html:DOC},
+  you:`<p>Tuỳ chọn: bấm <kbd>c</kbd> lúc nào cũng được.</p>`,
+  sys:`<ul><li>Bản render của session memory; giờ có thêm <b>Cấu hình đã chạy</b> và các lần đổi provider trong phiên.</li></ul>`,
+  out:`<ul><li>Một trang ≈4k token, đọc là hiểu session.</li></ul>` },
+
+/* ---- E ---- */
+{ id:'later', group:'Sau đó', title:'Xem lại & merge', need:true,
+  screen:{type:'shell', html:`<div class="ln"><span class="pr">~ $</span> <span class="cmd">agent-desk ls</span></div>
+<div class="ln">ID      STARTED           REPO        STATUS     PROVIDERS        TASK</div>
+<div class="ln">${SID}  2026-10-03 14:02  roster-api  <span class="c-ok">COMPLETED</span>  codex+claude     Thêm OCC cho roster schedule</div>
+<div class="ln">s-61bc  2026-10-02 16:40  roster-api  <span class="c-bad">CANCELLED</span>  codex            Đổi format export CSV</div>
+<div class="ln">&nbsp;</div>
+<div class="ln"><span class="pr">~ $</span> <span class="cmd">agent-desk show ${SID}</span>   <span class="c-dim"># replay chỉ đọc, gồm hội thoại plan và các lần đổi provider</span></div>
+<div class="ln">&nbsp;</div>
+<div class="ln"><span class="pr">${REPO} $</span> <span class="cmd">git log --oneline main..${BR}</span></div>
+<div class="ln"><span class="c-you">c71e9aa</span> agent-desk(${SID}): T2c metric roster_conflict_total</div>
+<div class="ln"><span class="c-you">8b0c4f1</span> agent-desk(${SID}): T3 test conflict đồng thời</div>
+<div class="ln"><span class="c-you">5e1d2a0</span> agent-desk(${SID}): T2+T2b revision + 409, sửa fixture</div>
+<div class="ln">&nbsp;</div>
+<div class="ln"><span class="pr">${REPO} $</span> <span class="cmd">git merge --no-ff ${BR}</span>   <span class="c-dim"># bạn tự quyết</span></div>` },
+  you:`<p>Mở lại session cũ bất kỳ lúc nào. Merge khi bạn hài lòng.</p>`,
+  sys:`<ul><li>Mọi event được lưu SQLite trước khi hiện lên màn hình.</li></ul>`,
+  out:`<ul><li>Danh sách session (kèm provider đã dùng), replay đầy đủ, commit theo task.</li></ul>` },
+
+{ id:'stop', group:'Sau đó', title:'Nhánh phụ: /stop giữa chừng', need:true,
+  screen:{type:'tui', state:base({elapsed:'17:40', plan:'v5 ✓', arch:ARCH1, sbar:{codex:28, claude:86},
+    main:'plan v5 ✓', dec:{count:11, rows:[D('route T2b','worker','rule'),D('route T3','worker','rule'),D('tier T3','strong','rule')]},
+    agents:[A('worker','T2+T2b','sonnet','med','done','commit 5e1d2a0','claude'), A('worker','T3 test conflict','sonnet','med','running','—','claude'), AG_T1], slots:'1/6', writers:'1/1',
+    verify:'<span class="c-ok">✓</span> lint <span class="c-ok">✓</span> typecheck <span class="c-ok">✓</span> unit 186/186', overlay:OV.stop,
+    composer:{focus:true, text:'/stop'}})},
+  log:[['14:19:40','you','/stop']],
+  you:`<p>Gõ <code>/stop</code> (hoặc <kbd>Ctrl+C</kbd> hai lần) rồi xác nhận <kbd>y</kbd>.</p>`,
+  sys:`<ul><li>Ngắt đúng cách theo runtime: claude nhận SIGINT, codex nhận <code>turn/interrupt</code>.</li></ul>`,
+  out:`<ul><li>Commit đã có vẫn còn; phần dở nằm trong worktree; session không bao giờ hiện “completed”.</li></ul>` },
+];
+
+/* ===================== renderers ===================== */
+function logsUpTo(i){
+  const out = [];
+  for (let k=0;k<=i;k++){ if (STEPS[k].log) out.push(...STEPS[k].log); }
+  return out;
+}
+const SRC = {main:'c-main', explorer:'c-agent', worker:'c-agent', haiku:'c-arch', architect:'c-arch', you:'c-you', rule:'c-dim', gate:'c-you', verify:'c-main', policy:'c-dim', hook:'c-dim', session:'c-dim', git:'c-dim', scheduler:'c-dim'};
+
+function renderStudio(sc){
+  const h = sc.hdr;
+  return `<div class="hdr"><b>AGENT DESK</b><span class="c-dim">·</span>roster-api · ${SID}${modes('PLAN')}<span class="stat ${h.cls}">${h.status}</span><span class="c-dim">plan ${h.plan}</span><span class="sp"></span><span>main ${pv('codex','gpt-6.1-sol')}</span><span>architect ${pv('claude','opus')} <span class="c-dim">${sc.arch||'on call'}</span></span></div>
+  ${statusBar()}
+  <div class="studio">
+    <div class="chat">${sc.more?'<div class="more">↑ cuộn lên để xem tin nhắn trước</div>':''}${sc.chat.join('')}</div>
+    ${sc.plan}
+  </div>
+  ${composer(sc.composer||{})}
+  <div class="keys"><b>Tab</b> chat ↔ plan · <b>↑↓</b> chọn mục · <b>c</b> comment · <b>?</b> hỏi về mục · <b>v</b> so sánh version · <b>F2</b> cấu hình · <b>/approve</b> · <b>/review</b> · <b>/model</b></div>`;
+}
+
+function decRow(r){
+  if (r.engine === 'haiku') {
+    const col = r.sharp ? 'var(--t-jev)' : 'var(--t-split)';
+    return `<div class="jrow"><span>${esc(r.point)} <span class="c-dim">→</span> ${esc(r.val)}</span><div class="bar"><div style="width:${Math.round(r.p*100)}%;background:${col}"></div></div><span><span class="eng haiku">haiku</span> <b>${r.p.toFixed(2)}</b> <span style="color:${col}">${r.sharp?'sharp':'split'}</span></span></div>`;
+  }
+  const label = {rule:'rule', main:'main', user:'bạn'}[r.engine];
+  return `<div class="jrow"><span>${esc(r.point)} <span class="c-dim">→</span> ${esc(r.val)}</span><span class="c-dim">— deterministic —</span><span><span class="eng ${r.engine}">${label}</span></span></div>`;
+}
+
+function renderTui(s, i){
+  const a = s.arch;
+  const trig = TRIG.map((t,k)=>`<div class="trig ${a.active===k?'on':''}">${a.active===k?'◆':'◇'} ${t}</div>`).join('');
+  const rows = s.dec.rows.map(decRow).join('') || '<div class="c-dim">chưa có quyết định nào</div>';
+  const ico = {running:'◐ running', done:'✓ done', queued:'⏸ queued', wait:'⧗ waiting you', fail:'✗ failed', interrupted:'■ interrupted'};
+  const icoCls = {running:'c-you', done:'c-ok', queued:'c-dim', wait:'c-you', fail:'c-bad', interrupted:'c-bad'};
+  const cards = s.agents.map(g=>`<div class="card ${g.status==='queued'?'queued':g.status==='wait'?'wait':(g.status==='fail'||g.status==='interrupted')?'fail':''}">
+      <div class="b">${g.role}</div><div>${pv(g.prov, esc(g.model))}</div><div>${esc(g.task)}</div>
+      <div class="${icoCls[g.status]}">${ico[g.status]}</div><div class="c-dim">${esc(g.note||'')}</div></div>`).join('');
+  const logs = logsUpTo(i).slice(-6).map(([t,src,msg])=>`<div class="lrow"><span class="c-dim">${t}</span><span class="${SRC[src]||''}">${src}</span><span>${esc(msg)}</span></div>`).join('');
+  return `<div class="tui">
+  <div class="hdr"><b>AGENT DESK</b><span class="c-dim">·</span><span>roster-api · ${SID}</span>${modes('RUN')}<span class="stat ${s.cls}">${s.status}</span><span>${s.elapsed}</span><span class="c-dim">plan ${s.plan}</span><span class="sp"></span><span class="c-dim">/stop</span></div>
+  ${statusBar(s.sbar)}
+  <div class="grid">
+    <div class="box arch"><div class="c-arch b" style="text-align:center">ARCHITECT</div><div style="text-align:center">${pv(...(a.pm||['claude','opus']))}${a.fb?' <span class="c-you">fallback</span>':''}</div><div class="c-arch" style="text-align:center">${a.state}</div>
+      ${trig}
+      <div style="margin-top:8px" class="k">last advice:</div><div class="c-arch">» ${esc(a.advice)}</div>
+      <div style="margin-top:8px"><span class="k">calls</span> ${a.calls}<br><span class="k">tokens read</span> ${a.tok}</div>
+      <div class="k" style="margin-top:8px">không bao giờ viết code. Main áp dụng review.</div></div>
+    <div class="center">
+      <div class="box main"><div><span class="c-main b">Main</span> ${pv('codex','gpt-6.1-sol')} <span class="c-dim">· plans + replans</span></div><div>effort <span class="c-main">▮▮▮▮</span> high · ${s.main}</div></div>
+      <div class="vl"></div>
+      <div class="box jev"><div style="display:flex"><span class="c-jev b">DECISION · fork layer</span><span style="flex:1"></span><span class="c-dim">decisions</span>&nbsp;<b>${s.dec.count}</b></div>${rows}
+        <div class="c-dim" style="margin-top:4px">rules luôn chạy trước · <span class="c-jev">sharp → code</span> · <span class="c-split">split → main</span> · rủi ro → bạn</div></div>
+      <div class="spawn">spawn agents · max 6 · <span class="c-agent">agents [${s.slots}]</span> · writers [${s.writers}]</div>
+      <div class="agents">${cards}</div>
+      <div class="vl"></div>
+      <div class="box ver"><span class="c-main b">review + verify</span> · ${s.verify} · approvals ${s.approvals}</div>
+    </div>
+  </div>
+  <div class="box log"><div class="lt">─ session log ─</div>${logs || '<div class="c-dim">—</div>'}</div>
+  ${composer(Object.assign({label:'nhắn cho session', ph:'Hỏi tiến độ, đổi ý, thêm yêu cầu… · /stop · /model · /context', hint:'<b>enter</b> inspect agent · <b>d</b> diff · <b>c</b> context · <b>F2</b> cấu hình · <b>Tab</b> vào ô chat · <b>/stop</b>'}, s.composer||{}))}
+  </div>${s.overlay?`<div class="ov">${s.overlay}</div>`:''}`;
+}
+
+/* ===================== state + UI ===================== */
+let cur = 0;
+const idx = id => STEPS.findIndex(s=>s.id===id);
+let fb = {};
+try { fb = JSON.parse(localStorage.getItem('agentdesk-proto-fb-v3')||'{}') || {}; } catch(e){ fb = {}; }
+function saveFb(){ try { localStorage.setItem('agentdesk-proto-fb-v3', JSON.stringify(fb)); } catch(e){} }
+
+function renderStepper(){
+  let html = '', lastG = '';
+  STEPS.forEach((s,k)=>{
+    if (s.group!==lastG){ html += `<div class="grp">${s.group}</div>`; lastG = s.group; }
+    const f = fb[s.id]?.v;
+    html += `<button class="st ${k===cur?'on':''}" data-i="${k}"><span class="n">${k+1}</span><span class="t">${esc(s.title)}</span>${s.isNew?'<span class="new">MỚI</span>':''}${s.need?'<span class="need">BẠN</span>':''}${f?`<span class="fbdot ${f}"></span>`:''}</button>`;
+  });
+  const el = document.getElementById('stepper');
+  el.innerHTML = html;
+  el.querySelectorAll('.st').forEach(b=>b.onclick=()=>go(+b.dataset.i));
+  const on = el.querySelector('.st.on'); if (on && on.scrollIntoView) on.scrollIntoView({block:'nearest', inline:'nearest'});
+}
+
+function renderTerm(){
+  const s = STEPS[cur], sc = s.screen;
+  let body = '';
+  if (sc.type==='shell') body = `<div class="shell">${sc.html}</div>`;
+  else if (sc.type==='tui') body = renderTui(sc.state, cur);
+  else if (sc.type==='studio') body = renderStudio(sc);
+  else body = sc.html;
+  document.getElementById('term').innerHTML = `<div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="ttl">${sc.type==='shell'?'zsh — ~/work':'agent-desk — '+((s.id==='compose'||s.id==='components')?'roster-api':SID)}</span></div><div class="tbody">${body}</div>`;
+  document.querySelectorAll('#term [data-k]').forEach(b=>{
+    if (s.keys && s.keys[b.dataset.k]) b.onclick=()=>press(b.dataset.k);
+    else { b.classList.add('dim'); b.title = 'Không mô phỏng trong flow mẫu'; }
+  });
+}
+
+function renderExplain(){
+  const s = STEPS[cur];
+  const keys = s.keys ? Object.entries(s.keys).map(([k,[to,label]])=>`<button data-k="${k}"><kbd>${k==='Escape'?'esc':k==='Enter'?'enter':k}</kbd>${esc(label)}</button>`).join('') : '';
+  document.getElementById('explain').innerHTML = `
+    <h2>${cur+1}. ${esc(s.title)}</h2><div class="meta">${s.group}${s.isNew?' · <b style="color:var(--accent)">MỚI trong v3</b>':''}</div>
+    <div class="sec you ${s.need?'':'passive'}"><h4>${s.need?'Bạn làm gì · cần bạn':'Bạn làm gì'}</h4>${s.you}${keys?`<div class="tryk">${keys}</div>`:''}</div>
+    <div class="sec"><h4>Hệ thống làm gì</h4>${s.sys}</div>
+    <div class="sec"><h4>Output bạn nhận được</h4>${s.out}</div>
+    ${s.why?`<div class="sec why">${s.why}</div>`:''}`;
+  document.querySelectorAll('#explain [data-k]').forEach(b=>b.onclick=()=>press(b.dataset.k));
+  document.getElementById('count').textContent = `${cur+1} / ${STEPS.length}`;
+  document.getElementById('prevBtn').disabled = cur===0;
+  document.getElementById('nextBtn').disabled = cur===STEPS.length-1;
+  document.getElementById('prog').style.width = ((cur+1)/STEPS.length*100)+'%';
+  const f = fb[s.id] || {};
+  document.getElementById('fbOk').classList.toggle('on', f.v==='ok');
+  document.getElementById('fbBad').classList.toggle('on', f.v==='bad');
+  document.getElementById('fbNote').value = f.note || '';
+}
+
+function go(i){
+  cur = Math.max(0, Math.min(STEPS.length-1, i));
+  renderStepper(); renderTerm(); renderExplain();
+  try { history.replaceState(null, '', '#step=' + STEPS[cur].id); } catch(e){}
+}
+function press(k){
+  const s = STEPS[cur];
+  if (s.keys && s.keys[k]) { go(idx(s.keys[k][0])); return true; }
+  return false;
+}
+
+document.getElementById('prevBtn').onclick = ()=>go(cur-1);
+document.getElementById('nextBtn').onclick = ()=>go(cur+1);
+document.addEventListener('keydown', e=>{
+  if (e.target.tagName==='TEXTAREA' || e.metaKey || e.ctrlKey) return;
+  if (document.getElementById('exportDlg').open) return;
+  if (e.key==='ArrowRight') { go(cur+1); e.preventDefault(); return; }
+  if (e.key==='ArrowLeft') { go(cur-1); e.preventDefault(); return; }
+  if (press(e.key)) e.preventDefault();
+});
+
+function setFb(v){
+  const id = STEPS[cur].id;
+  fb[id] = fb[id] || {};
+  fb[id].v = fb[id].v===v ? undefined : v;
+  saveFb(); renderStepper(); renderExplain();
+}
+document.getElementById('fbOk').onclick = ()=>setFb('ok');
+document.getElementById('fbBad').onclick = ()=>setFb('bad');
+document.getElementById('fbNote').addEventListener('input', e=>{
+  const id = STEPS[cur].id; fb[id] = fb[id] || {}; fb[id].note = e.target.value; saveFb();
+});
+
+document.getElementById('exportBtn').onclick = ()=>{
+  const lines = ['# Góp ý prototype Agent Desk (v3)', ''];
+  let any = false;
+  STEPS.forEach((s,k)=>{
+    const f = fb[s.id]; if (!f || (!f.v && !f.note)) return; any = true;
+    const mark = f.v==='ok' ? '✓ đúng ý' : f.v==='bad' ? '✗ chưa đúng' : '·';
+    lines.push(`- ${k+1}. ${s.title} — ${mark}${f.note ? `\n  ${f.note.replace(/\n/g,'\n  ')}` : ''}`);
+  });
+  if (!any) lines.push('(chưa có góp ý nào: chọn “Đúng ý / Chưa đúng” hoặc ghi chú ở từng bước)');
+  document.getElementById('exportText').value = lines.join('\n');
+  document.getElementById('exportDlg').showModal();
+};
+document.getElementById('closeDlg').onclick = ()=>document.getElementById('exportDlg').close();
+document.getElementById('copyBtn').onclick = async ()=>{
+  const ta = document.getElementById('exportText');
+  try { await navigator.clipboard.writeText(ta.value); document.getElementById('copyBtn').textContent = 'Đã copy ✓'; }
+  catch(e){ ta.select(); try { document.execCommand('copy'); document.getElementById('copyBtn').textContent = 'Đã copy ✓'; } catch(_){} }
+  setTimeout(()=>document.getElementById('copyBtn').textContent='Copy', 1500);
+};
+
+document.getElementById('themeBtn').onclick = ()=>{
+  const r = document.documentElement;
+  const dark = r.dataset.theme ? r.dataset.theme==='dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  r.dataset.theme = dark ? 'light' : 'dark';
+};
+
+const fromHash = idx((location.hash.match(/step=([\w-]+)/) || [])[1]);
+go(fromHash >= 0 ? fromHash : 0);
+</script>
+</body>
+</html>

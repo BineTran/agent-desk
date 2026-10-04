@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Desk Settings</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f5f6f8;--surface:#fff;--text:#1b2130;--muted:#5d6678;--border:#dde2ea}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0a0d13;--surface:#121824;--text:#e2e7f0;--muted:#98a2b5;--border:#263149}}
+:root[data-theme="dark"]{--bg:#0a0d13;--surface:#121824;--text:#e2e7f0;--muted:#98a2b5;--border:#263149}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Inter,system-ui,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 16px}
+h1{font-size:18px;font-weight:600;margin:0 0 4px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+.tw{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;overflow-x:auto}
+.term{min-width:860px;background:#0c1018;color:#c9d2de;border:1px solid #1d2638;border-radius:8px;font:12.5px/1.6 "JetBrains Mono",ui-monospace,Menlo,monospace;padding:10px 12px;min-height:560px;position:relative;outline:none}
+.d{color:#6f7c90}.ok{color:#7ee08a}.bad{color:#ff7b72}.y{color:#f0c25a}.c{color:#5fd3d3}.b{color:#7aa2f7}
+.sec{color:#9fb3d1;margin-top:8px;text-decoration:underline}
+.r{display:grid;grid-template-columns:16px 130px minmax(0,1fr) 70px 84px;cursor:pointer;white-space:nowrap}
+.r:hover{background:#141c2b}.r.on{background:#1b2640}
+.r>span{overflow:hidden;text-overflow:ellipsis}
+.chg{color:#f0c25a}
+.src{font-size:11px;padding:0 4px;border-radius:3px;background:#182031;color:#98a2b5}
+.pop{margin:2px 0 6px 40px;background:#111827;border:1px solid #4a5a7a;border-radius:6px;padding:8px 10px}
+.full{background:#111827;border:1px solid #4a5a7a;border-radius:6px;padding:8px 10px;margin-top:6px}
+.opt{cursor:pointer;padding:0 4px;white-space:nowrap}.opt:hover,.opt.on{background:#1b2640}
+.opt.dis{color:#4b566a;cursor:not-allowed}
+.keys{position:absolute;left:12px;right:12px;bottom:8px;color:#6f7c90;border-top:1px dashed #2a3650;padding-top:4px}
+.k{color:#c9d2de;border:1px solid #2a3650;border-radius:3px;padding:0 4px;cursor:pointer;background:#111827;font:inherit}
+.k:hover{border-color:#7aa2f7}
+.hdr{display:flex;gap:10px}.hdr .sp{flex:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>SETTINGS v2 — prototype</h1>
+<p class="sub">Spec cho <code>agent_desk/tui/settings.py</code>. Một danh sách, enter mở picker ngay dưới dòng, thay đổi được gom lại, <b>s</b> để review (chọn session/repo/global cho từng thay đổi) rồi enter để ghi. Bấm vào terminal rồi dùng ↑↓ enter s u esc, hoặc click.</p>
+<div class="tw"><div class="term" id="t" tabindex="0"></div></div>
+</div>
+<script>
+const P={codex:{rt:'codex',st:'login chatgpt plus',w:1,models:{'gpt-5.6-luna':'fast','gpt-6.1-sol':'strong','gpt-6-astra':''}},
+claude:{rt:'claude-cli',st:'login claude.ai team',w:1,models:{haiku:'fast',sonnet:'strong',opus:'max'}},
+antigravity:{rt:'agy-cli',st:'login google',w:0,models:{'gemini-3.8-flash-medium':'fast','gemini-3.1-pro-high':'strong','claude-sonnet-5-5-high':''}}};
+const R0={main:['codex','gpt-6.1-sol','high','read'],explorer:['codex','gpt-5.6-luna','low','read'],worker:['codex','gpt-6.1-sol','medium','write'],researcher:['codex','gpt-5.6-luna','low','read'],architect:['codex','gpt-6-astra','medium','read']};
+const D0={route:['none','main'],tier:['none','main'],dangerous:['none','user'],retry_or_stop:['llm · claude · haiku','main']};
+const WHY={route:'which reader takes a task',tier:'fast or strong model',dangerous:'risky command: allow or ask',retry_or_stop:'failed: retry/replan/stop'};
+let S={rows:[],sel:0,pop:null,pend:{},view:'list',jev:false,jevVar:'TYPESAFE_API_KEY',jevPts:{retry_or_stop:1},jevMode:'decide',wiz:0,newP:null,scope:{}};
+const t=document.getElementById('t');
+function rows(){const o=[];o.push({h:'Roles — who does the work'});for(const k in R0)o.push({kind:'role',k});
+o.push({h:'Decision points — rules always run first → engine (if sure) → fallback'});for(const k in D0)o.push({kind:'pt',k});
+o.push({h:'Providers and engines'});for(const k in P)o.push({kind:'prov',k});o.push({kind:'jev',k:'jev'});o.push({kind:'add',k:'add'});return o}
+const role=k=>S.pend['roles.'+k]||R0[k], pt=k=>S.pend['decision.'+k]||D0[k];
+const src=s=>`<span class="src">${s}</span>`;
+function render(){S.rows=rows();const sel=S.rows.filter(r=>!r.h);const cur=sel[S.sel];const n=Object.keys(S.pend).length;let h='';
+h+=`<div class="hdr"><b>SETTINGS</b><span class="d">roster-api</span><span class="sp"></span>${n?`<span class="y">● ${n} change${n>1?'s':''} pending</span>`:'<span class="d">no changes</span>'}</div>`;
+if(S.view==='review')h+=review();else if(S.view==='jev')h+=jevWiz();else if(S.view==='add')h+=addWiz();else{
+let i=0;for(const r of S.rows){if(r.h){h+=`<div class="sec">${r.h}</div>`;continue}h+=line(r,i===S.sel,i);if(i===S.sel&&S.pop)h+=popup(cur);i++}}
+h+=`<div class="keys">${keys()}</div>`;t.innerHTML=h;bind()}
+function line(r,on,i){const m=on?'▸':' ';const a=`class="r${on?' on':''}" data-i="${i}"`;
+if(r.kind==='role'){const v=role(r.k),c=S.pend['roles.'+r.k];return `<div ${a}><span class="y">${m}</span><span>${r.k} <span class="d">${v[3]}</span></span><span><span class="b">${v[0]}</span> · ${v[1]}</span><span>${v[2]}</span><span>${c?'<span class="chg">● edited</span>':src(r.k==='worker'?'repo':'default')}</span></div>`}
+if(r.kind==='pt'){const v=pt(r.k),c=S.pend['decision.'+r.k];const e=v[0]==='none'?'<span class="d">(no engine)</span>':`<span class="${v[0].startsWith('jev')?'ok':'c'}">${v[0]}</span>`;return `<div ${a}><span class="y">${m}</span><span>${r.k}</span><span><span class="d">rules →</span> ${e} <span class="d">→</span> <span class="y">${v[1]}</span></span><span class="d">${v[0]==='none'?'':'≥0.8'}</span><span>${c?'<span class="chg">● edited</span>':src('default')}</span></div>`}
+if(r.kind==='prov'){const p=P[r.k];return `<div ${a}><span class="y">${m}</span><span class="b">${r.k}</span><span><span class="ok">●</span> ${p.st} <span class="d">· ${p.rt}${p.w?'':' · read-only'}</span></span><span></span><span>${src(p.new?'edited':'default')}</span></div>`}
+if(r.kind==='jev')return `<div ${a}><span class="y">${m}</span><span class="${S.jev?'ok':'d'}">jev</span><span>${S.jev?`<span class="ok">on</span> · key from ${S.jevVar} <span class="bad">not set ✗</span>`:'<span class="d">decision engine · off — enter to set up</span>'}</span><span></span><span>${S.jev?'<span class="chg">● edited</span>':''}</span></div>`;
+return `<div ${a}><span class="y">${m}</span><span class="c">+ add provider</span><span class="d">agy-cli · claude-cli · codex</span><span></span><span></span></div>`}
+function popup(cur){let h='<div class="pop">';
+if(cur.kind==='role'){const v=role(cur.k),w=v[3]==='write';h+=`<div class="d">${cur.k}: choose a model  (type to search all models)</div>`;
+for(const p in P){const dis=w&&!P[p].w;h+=`<div><span class="b">${p}</span> <span class="${dis?'d':'ok'}">● ${P[p].st}</span>${dis?' <span class="bad">— no write sandbox, cannot run '+cur.k+'</span>':''}</div>`;
+for(const m in P[p].models){const t2=P[p].models[m];const is=v[0]===p&&v[1]===m;h+=`<div class="opt${dis?' dis':''}${is?' on':''}" data-pm="${dis?'':p+'|'+m}">  ${is?'▸':' '} ${m} ${t2?'<span class="d">tier '+t2+'</span>':''}</div>`}}
+h+=`<div class="d" style="margin-top:4px">step 2 after enter on a model — effort for ${v[1]} (only what the model supports; <b>e</b> on a role row jumps here): ${['low','medium','high','xhigh'].map(e=>`<span class="opt${v[2]===e?' on':''}" data-eff="${e}">${e}</span>`).join(' ')}</div>`}
+else if(cur.kind==='pt'){const v=pt(cur.k);h+=`<div class="d">${cur.k}: ${WHY[cur.k]}</div>`;
+const es=['none','llm · claude · haiku','llm · codex · gpt-5.6-luna','llm · antigravity · gemini-3.8-flash-medium'].concat(S.jev?['jev · typesafe']:[]);
+for(const e of es)h+=`<div class="opt${v[0]===e?' on':''}" data-eng="${e}">  ${v[0]===e?'▸':' '} ${e==='none'?'none (rules only)':e}</div>`;
+if(!S.jev)h+=`<div class="opt d" data-go="jev">    jev — set up first (enter)  calibrated</div>`;
+h+=`<div class="d" style="margin-top:4px">when not sure ${['main','user'].map(f=>`<span class="opt${v[1]===f?' on':''}" data-fb="${f}">${f}</span>`).join(' ')}   shadow off</div>`}
+else if(cur.kind==='prov'){const p=P[cur.k];h+=`<div><b class="b">${cur.k}</b> <span class="d">· ${p.rt}</span></div><div>tiers ${Object.entries(p.models).filter(x=>x[1]).map(x=>`${x[1]} <span class="y">${x[0]}</span>`).join('  ')}</div><div class="d">${Object.keys(p.models).length} models known · ${p.w?'can run write roles':'read roles only (no write sandbox)'}</div><div class="d">[t] edit tiers   [r] refresh models   [x] remove</div>`}
+return h+'</div>'}
+function review(){const ks=Object.keys(S.pend);let h=`<div class="full"><b>Review and save</b> <span class="d">· each change goes to one place · nothing is written until enter</span>`;
+for(const k of ks){const sc=S.scope[k]||(k.startsWith('roles')||k.startsWith('decision')?'repo':'global');h+=`<div style="margin-top:4px">▸ <span class="chg">${k.replace('.',' ')} → ${S.pend[k].slice(0,2).join(' · ')}</span>  ${['session','repo','global'].map(s=>`<span class="opt${s===sc?' on':''}" data-sc="${k}|${s}">${s}</span>`).join(' ')}</div>`}
+const rk=ks.filter(k=>k.startsWith('roles'));if(rk.length){h+=`<div style="margin-top:8px"><b>+++ .agent-desk.yaml</b></div><div class="ok">+roles:</div>`;for(const k of rk){const v=S.pend[k];h+=`<div class="ok">+  ${k.split('.')[1]}: { provider: ${v[0]}, model: ${v[1]}, effort: ${v[2]} }</div>`}}
+if(S.jev&&S.pend['jev.typesafe'])h+=`<div style="margin-top:8px"><b>+++ ~/.agent-desk/config.yaml</b></div><div class="ok">+providers.typesafe: { kind: decision, runtime: jev, auth: env, env_key: ${S.jevVar} }</div><div class="ok">+policy.allow_api_key: [typesafe]</div>`;
+h+=`<div class="ok" style="margin-top:6px">✓ valid · config hash 7c1e9a → 3b02f4 · enter to save</div><div style="margin-top:4px"><span class="k" data-act="save">enter save all</span> <span class="k" data-act="close">esc back</span></div></div>`;return h}
+function jevWiz(){const st=S.wiz;let h=`<div class="full"><b>Set up Jev</b> <span class="d">· step ${st+1}/3 · calibrated decision engine: answers the decision points, never writes code</span>`;
+if(st===0)h+=`<div style="margin-top:6px" class="d">A key typed here goes into this run's environment only — never a file, a log or the screen.</div><div>variable <span class="y">${S.jevVar}</span>  <span class="bad">not set ✗</span></div><div>▸ key <span class="y">•••••••••••• (32 chars)▏</span> <span class="d">enter applies it now · status becomes "set ✓ (this run only)"</span></div><div class="d">to keep it after exit: export ${S.jevVar}=&lt;your key&gt; in ~/.zshrc</div><div class="d">until it is set, the points fall back to main/user — safe to enable now</div>`;
+if(st===1){h+=`<div style="margin-top:6px" class="d">Use Jev for</div>`;for(const k in D0)h+=`<div class="opt" data-jp="${k}">  ${S.jevPts[k]?'☑':'☐'} ${k} <span class="d">${WHY[k]}</span></div>`;
+h+=`<div style="margin-top:4px">mode ${['decide','shadow'].map(m=>`<span class="opt${S.jevMode===m?' on':''}" data-jm="${m}">${m}</span>`).join(' ')} <span class="d">${S.jevMode==='shadow'?'records opinion next to the current engine, does not decide':'Jev decides when sure (≥0.8), else the fallback'}</span></div>`}
+if(st===2)h+=`<div style="margin-top:6px">will stage:</div><div class="ok">+ providers.typesafe { kind: decision, runtime: jev, auth: env, env_key: ${S.jevVar} }</div><div class="ok">+ policy.allow_api_key: [typesafe]</div>${Object.keys(S.jevPts).filter(k=>S.jevPts[k]).map(k=>`<div class="ok">+ decision.${k}.${S.jevMode==='shadow'?'shadow':'engine'}: jev</div>`).join('')}`;
+return h+`<div style="margin-top:6px"><span class="k" data-act="${st<2?'jnext':'jdone'}">${st<2?'enter next':'enter stage'}</span> <span class="k" data-act="close">esc cancel</span></div></div>`}
+function addWiz(){const st=S.wiz;let h=`<div class="full"><b>Add provider</b> <span class="d">· step ${st+1}/3</span>`;
+if(st===0){h+=`<div style="margin-top:6px" class="d">runtime (installed plugins)</div>`;for(const [r,d] of [['agy-cli','read-only'],['claude-cli','write sandbox'],['codex','write sandbox']])h+=`<div class="opt${S.newP===r?' on':''}" data-rt="${r}">  ${S.newP===r?'▸':' '} ${r} <span class="d">${d}</span></div>`;h+=`<div style="margin-top:4px">name <span class="y">${S.newP?({'agy-cli':'antigravity','claude-cli':'claude'}[S.newP]||S.newP)+'2':''}▏</span> <span class="d">auth: login (the CLI's own subscription)</span></div>`}
+if(st===1)h+=`<div style="margin-top:6px"><span class="ok">● logged in · fetched 18 models</span></div><div>▸ tier fast   ◂ <span class="y">gemini-3.8-flash-medium</span> ▸ <span class="d">suggested</span></div><div>  tier strong ◂ <span class="y">gemini-3.1-pro-high</span> ▸ <span class="d">suggested</span></div><div>  tier max    ◂ <span class="d">(none)</span> ▸</div><div class="d">↑↓ tier · ←→ model</div>`;
+if(st===2)h+=`<div style="margin-top:6px">will stage:</div><div class="ok">+ providers.${({'agy-cli':'antigravity','claude-cli':'claude'}[S.newP]||S.newP)}2 { runtime: ${S.newP}, auth: login }</div><div class="d">then pick it for a role in Roles</div>`;
+return h+`<div style="margin-top:6px"><span class="k" data-act="${st<2?'anext':'adone'}">${st<2?'enter next':'enter stage'}</span> <span class="k" data-act="close">esc cancel</span></div></div>`}
+function keys(){if(S.view!=='list')return 'enter confirm · esc back';if(S.pop)return '↑↓ choose · type to search · ←→ effort/fallback · enter pick · esc cancel';return `<span class="k" data-act="up">↑</span><span class="k" data-act="down">↓</span> move · <span class="k" data-act="enter">enter</span> change · <span class="k" data-act="reset">u</span> undo row · <span class="k" data-act="review">s</span> review and save · <span class="k" data-act="close">esc</span> close`}
+const cur=()=>S.rows.filter(r=>!r.h)[S.sel];
+function bind(){t.querySelectorAll('[data-i]').forEach(e=>e.onclick=()=>{const i=+e.dataset.i;if(i===S.sel&&!S.pop)act('enter');else{S.sel=i;S.pop=null;render()}});
+t.querySelectorAll('[data-pm]').forEach(e=>e.onclick=ev=>{ev.stopPropagation();if(!e.dataset.pm)return;const[p,m]=e.dataset.pm.split('|');const k=cur().k,v=role(k);S.pend['roles.'+k]=[p,m,v[2],v[3]];S.pop=null;render()});
+t.querySelectorAll('[data-eff]').forEach(e=>e.onclick=()=>{const k=cur().k,v=role(k);S.pend['roles.'+k]=[v[0],v[1],e.dataset.eff,v[3]];render()});
+t.querySelectorAll('[data-eng]').forEach(e=>e.onclick=()=>{const k=cur().k;S.pend['decision.'+k]=[e.dataset.eng,pt(k)[1]];S.pop=null;render()});
+t.querySelectorAll('[data-fb]').forEach(e=>e.onclick=()=>{const k=cur().k;S.pend['decision.'+k]=[pt(k)[0],e.dataset.fb];render()});
+t.querySelectorAll('[data-go]').forEach(e=>e.onclick=()=>{S.pop=null;S.view='jev';S.wiz=0;render()});
+t.querySelectorAll('[data-sc]').forEach(e=>e.onclick=()=>{const[k,s]=e.dataset.sc.split('|');S.scope[k]=s;render()});
+t.querySelectorAll('[data-jp]').forEach(e=>e.onclick=()=>{S.jevPts[e.dataset.jp]=!S.jevPts[e.dataset.jp];render()});
+t.querySelectorAll('[data-jm]').forEach(e=>e.onclick=()=>{S.jevMode=e.dataset.jm;render()});
+t.querySelectorAll('[data-rt]').forEach(e=>e.onclick=()=>{S.newP=e.dataset.rt;render()});
+t.querySelectorAll('[data-act]').forEach(e=>e.onclick=ev=>{ev.stopPropagation();act(e.dataset.act)})}
+function act(a){const n=S.rows.filter(r=>!r.h).length;
+if(a==='up'){S.sel=(S.sel+n-1)%n;S.pop=null}else if(a==='down'){S.sel=(S.sel+1)%n;S.pop=null}
+else if(a==='close'){if(S.view!=='list')S.view='list';else S.pop=null}
+else if(a==='enter'){const c=cur();if(c.kind==='jev'){S.view='jev';S.wiz=0}else if(c.kind==='add'){S.view='add';S.wiz=0;S.newP='agy-cli'}else S.pop=S.pop?null:c.k}
+else if(a==='reset'){const c=cur();delete S.pend['roles.'+c.k];delete S.pend['decision.'+c.k]}
+else if(a==='review'){if(Object.keys(S.pend).length)S.view='review'}
+else if(a==='save'){S.pend={};S.view='list'}
+else if(a==='jnext')S.wiz++;else if(a==='jdone'){S.jev=true;S.view='list';S.pend['jev.typesafe']=['enable',S.jevMode];for(const k in S.jevPts)if(S.jevPts[k]&&S.jevMode==='decide')S.pend['decision.'+k]=['jev · typesafe',pt(k)[1]]}
+else if(a==='anext'){if(S.newP)S.wiz++}else if(a==='adone'){const nm=({'agy-cli':'antigravity','claude-cli':'claude'}[S.newP]||S.newP)+'2';P[nm]={rt:S.newP,st:'login',w:S.newP!=='agy-cli',new:1,models:{'gemini-3.8-flash-medium':'fast','gemini-3.1-pro-high':'strong'}};S.pend['providers.'+nm]=['add',S.newP];S.view='list'}
+render()}
+t.addEventListener('keydown',e=>{const m={ArrowUp:'up',ArrowDown:'down',Enter:S.view==='review'?'save':S.view==='jev'?(S.wiz<2?'jnext':'jdone'):S.view==='add'?(S.wiz<2?'anext':'adone'):'enter',Escape:'close',s:'review',u:'reset'}[e.key];if(m){e.preventDefault();act(m)}});
+render();t.focus();
+</script>
+</body>
+</html>

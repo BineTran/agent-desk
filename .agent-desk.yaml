@@ -1,0 +1,7 @@
+# Agent Desk — what counts as 'done' in this repo. Edit freely.
+verification:
+  unit: { command: "python3 -m pytest -q", required: true }
+approval:
+  require_for: [git_push, destructive_filesystem, db_migration, deployment]
+# roles:            # change who runs what with one line each, e.g.
+#   architect: { provider: claude, model: opus }
