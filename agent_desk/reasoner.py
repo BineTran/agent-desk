@@ -13,7 +13,7 @@ from typing import Awaitable, Callable, TypeVar
 from pydantic import BaseModel, ValidationError
 
 from .config.schema import Config
-from .contracts import MAIN_FIELD, ArchitectReview, ContextPacket, MainTurn, Pick, Plan, Questions, Summary, Triage
+from .contracts import MAIN_FIELD, ArchitectReview, ContextPacket, MainTurn, Pick, Plan, Questions, Route, Summary, Triage
 from .roles import resolve
 from .runtime.base import AgentRuntime, ApprovalHandler, EventSink, RunSpec, labelled
 
@@ -104,7 +104,7 @@ class Reasoner:
             if self.thread_id:
                 self.thread_owner = owner
             if self.thread_id != before:
-                await self.emit("main.thread", {"thread_id": self.thread_id, "provider": role.provider, "account": self.cfg.account_of(role.provider, role.account)[0]})
+                await self.emit("main.thread", {"thread_id": self.thread_id, "provider": role.provider, "account": self.cfg.account_of(role.provider, role.account)[0], "cwd": self.cwd})
             if res.status != "completed":
                 self._sent.clear()                     # unknown what the thread kept: re-send context next time
                 raise ReasonerError(f"main {label} {res.status}: {res.error}")
@@ -131,6 +131,20 @@ class Reasoner:
 
     def plan_json(self, plan: Plan) -> str:
         return self.once("plan", plan.model_dump_json(), "(the current plan is unchanged since you last saw it in this conversation)")
+
+    async def route(self, pkt: ContextPacket, text: str, state: dict) -> Route:
+        """One chat message: answer it now (the answer IS this reply), run one quick task, or make a plan. One call either way."""
+        r = await self.ask(self.ctx(pkt) + "\n\n## Session state (data)\n" + json.dumps(state, ensure_ascii=False) + "\n\n## User message\n" + text +
+                           "\n\n---\nDecide how to handle this message and reply with `route`:\n"
+                           "- kind=answer: the message needs no file to change (questions, explanations, reviews, where/how/why). Read the code you need "
+                           "with your tools and put the COMPLETE answer in `text` (cite path:line). brief=null, task=null.\n"
+                           f"- kind=quick: a small, unambiguous code change touching at most {state.get('max_quick_files', 3)} exact files "
+                           "(no globs), with no push, deploy, migration or new dependency and no open design question. Fill `task` "
+                           "(kind=implementation, requires_write=true, depends_on=[], exact `outputs`, concrete acceptance_criteria), `brief` "
+                           "(the request restated so it stands alone) and a one-line `text` saying what will change.\n"
+                           "- kind=plan: anything bigger or unclear. `brief` restates the request so it stands alone; `text` is one line; task=null.\n"
+                           "Never use kind=escalate. `reason` is one short line. When in doubt between quick and plan, choose plan.", Route, "route")
+        return r if r.kind != "escalate" else r.model_copy(update={"kind": "plan"})
 
     async def clarify(self, pkt: ContextPacket, verify_cmds: list[str]) -> Questions:
         return await self.ask(
@@ -178,3 +192,33 @@ class Reasoner:
         return await self.ask(self.ctx(pkt) + "\n\n## Current plan\n" + self.plan_json(plan) + f"\n\nTasks already DONE (keep them unchanged): {', '.join(done) or 'none'}\n"
                               f"## Advice from the independent reviewer\n{advice}\n\n---\nRevise the plan to act on this advice: add or modify only PENDING tasks "
                               "(e.g. a task that fixes a fixture), keep ids stable, and do not change acceptance criteria unless the advice demands it.", Plan, "revise")
+
+
+class ChatTriage:
+    """chat.triage: cascade. The cheap `chat` role answers trivial questions itself; anything else is handed over to Main.
+    Its own thread, so Main's cached prefix is untouched. It can never start work: every non-answer is an escalation."""
+
+    def __init__(self, runtime: AgentRuntime, cfg: Config, cwd: str, emit: EventSink, approve: ApprovalHandler, overrides: dict | None = None):
+        self.rt, self.cfg, self.cwd, self.emit, self.approve = runtime, cfg, cwd, emit, approve
+        self.overrides = overrides if overrides is not None else {}
+        self.thread_id: str | None = None
+        self._n = 0
+
+    async def triage(self, text: str, state: dict) -> Route:
+        role = resolve(self.cfg, "chat", overrides=self.overrides)
+        self._n += 1
+        rid = f"chat-{self._n}"
+        prompt = ("## Session state (data)\n" + json.dumps(state, ensure_ascii=False) + "\n\n## User message\n" + text + "\n\n---\n"
+                  "Answer ONLY if the message is trivial and you are certain (greetings, a fact you can check in one or two files): "
+                  "kind=answer with the full answer in `text`. Otherwise kind=escalate with text='' - a stronger model takes over. "
+                  "Never answer with quick or plan. brief=null, task=null, `reason` one short line.")
+        res = await self.rt.run(RunSpec(rid, role, self.cwd, prompt, Route.model_json_schema(), thread_id=self.thread_id, schema_name="Route"),
+                                labelled(self.emit, rid, "triage"), self.approve)
+        self.thread_id = res.thread_id or self.thread_id
+        try:
+            r = Route.model_validate_json(res.final_text) if res.status == "completed" else None
+        except (ValidationError, ValueError):
+            r = None
+        if r is None or r.kind != "answer" or not r.text.strip():
+            return Route(kind="escalate", text="", brief=None, task=None, reason=(r.reason if r else res.error or "invalid reply") or "escalate")
+        return r

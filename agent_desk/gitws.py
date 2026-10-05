@@ -35,6 +35,10 @@ class Workspace:
     branch: str
     base_commit: str
     linked: list[str] = field(default_factory=list)      # dependency dirs symlinked from the user's checkout
+    session_base: str = ""                                # where the session's branch started; base_commit moves to each job's start
+
+    def __post_init__(self):
+        self.session_base = self.session_base or self.base_commit
 
 
 def linked_paths(ws: Workspace) -> list[str]:
@@ -56,11 +60,15 @@ def linked_paths(ws: Workspace) -> list[str]:
 async def _add_all(ws: Workspace) -> None:
     """git add -A without our dependency links. Only links .gitignore does not already cover get an exclude:
     naming an ignored path in a pathspec makes git add fail ('paths are ignored by one of your .gitignore files')."""
+    await git(ws.path, "add", "-A", *await _pathspec(ws))
+
+
+async def _pathspec(ws: Workspace) -> list[str]:
     links = ws.linked or linked_paths(ws)
     if links:
         ignored = set((await git(ws.path, "check-ignore", *links, check=False)).splitlines())
         links = [x for x in links if x not in ignored]
-    await git(ws.path, "add", "-A", *(["--", "."] + [f":(exclude){x}" for x in links] if links else []))
+    return ["--", "."] + [f":(exclude){x}" for x in links] if links else []
 
 
 async def link_deps(ws: Workspace, names: list[str]) -> list[str]:
@@ -115,10 +123,10 @@ async def diff(ws: Workspace) -> str:
     return await git(ws.path, "diff", "--cached", "--no-color", check=False)
 
 
-async def diff_since_base(ws: Workspace) -> str:
-    """Everything the session changed: its commits plus anything not yet committed."""
+async def diff_since_base(ws: Workspace, base: str | None = None) -> str:
+    """Everything the current job changed (base: its start; pass ws.session_base for the whole branch): commits plus anything not yet committed."""
     await _add_all(ws)
-    return await git(ws.path, "diff", "--cached", "--no-color", ws.base_commit, check=False)
+    return await git(ws.path, "diff", "--cached", "--no-color", base or ws.base_commit, check=False)
 
 
 async def commit_all(ws: Workspace, message: str) -> str | None:
@@ -130,6 +138,18 @@ async def commit_all(ws: Workspace, message: str) -> str | None:
         return None
     await git(ws.path, "commit", "-q", "-m", message)
     return await git(ws.path, "rev-parse", "--short", "HEAD")
+
+
+async def stash_leftovers(ws: Workspace, message: str) -> bool:
+    """Uncommitted changes a previous job left behind (it failed or was stopped): stash them so the next job starts clean. Nothing is lost."""
+    if not await changed_files(ws):
+        return False
+    await git(ws.path, "stash", "push", "-u", "-q", "-m", message, *await _pathspec(ws))
+    return True
+
+
+async def head(ws: Workspace) -> str:
+    return await git(ws.path, "rev-parse", "HEAD")
 
 
 async def changed_since_base(ws: Workspace) -> list[str]:

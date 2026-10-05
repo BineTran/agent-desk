@@ -24,7 +24,7 @@ from ..config.loader import Loaded
 from ..context import builder
 from ..context.inputs import parse_mentions
 from ..context.render import render as render_memory
-from ..graph import ReopenError, load_session, open_session, run_graph
+from ..graph import ReopenError, load_session, open_chat, run_graph, run_turn
 from ..plugins import Registry
 from ..reasoner import render_packet
 from ..roles import resolve
@@ -201,6 +201,7 @@ class AgentDeskApp(App):
                         yield Static(id="run_bottom")
                 yield Static(id="runlog")
             yield VerticalScroll(Static(id="result_txt"), id="result")
+            yield VerticalScroll(Static(id="chat_txt"), id="chatpane")
         with Vertical(id="cards"):
             yield QuestionCard(id="qcard")
             yield KeyCard({"a", "x", "e"}, id="pcard")
@@ -314,7 +315,7 @@ class AgentDeskApp(App):
         self.q("#statusbar", Static).update(views.status_bar(cfg, self.status, self.notes + [o["text"] for o in p.overrides[-2:]]
                                                              + ([views.baseline_note(p)] if views.baseline_note(p) and p.status in ("PLANNING", "RUNNING") else []), p.limits))
         sw = self.q("#body", ContentSwitcher)
-        sw.current = {"HOME": "home", "PLAN": "plan", "RUN": "run", "RESULT": "result"}[mode]
+        sw.current = {"HOME": "home", "CHAT": "chatpane", "PLAN": "plan", "RUN": "run", "RESULT": "result"}[mode]
         if mode == "HOME":
             self.q("#home_txt", Static).update(Group(
                 Text("\nWhat do you want to do in this repo?", style="bold cyan"),
@@ -327,6 +328,12 @@ class AgentDeskApp(App):
                 *([Text("\nEarlier sessions in this repo  (/open <id> to continue one)", style="bold cyan")] if self.recent else []),
                 *[Text.assemble(f"  {sid}  ", (f"{status:<14}", "yellow" if status != "COMPLETED" else "green"), (f"{(title or '')[:70]}", ""),
                                 (f"  {created[:16].replace('T', ' ')}", "bright_black")) for sid, status, title, created in self.recent]))
+        elif mode == "CHAT":
+            b = views.bubble_view(p, now, self.frame, self.busy)
+            self.q("#chat_txt", Static).update(Group(views.chat_view(p, 40), *([b] if b is not None else [])))
+            if (len(p.chat), b is not None) != self.result_seen:
+                self.result_seen = (len(p.chat), b is not None)
+                self.q("#chatpane", VerticalScroll).scroll_end(animate=False)
         elif mode == "PLAN":
             self.q("#chat", ChatLog).sync(p.chat, views.bubble_view(p, now, self.frame, self.busy))
             pl = self.q("#planlist", SelectList)
@@ -413,13 +420,14 @@ class AgentDeskApp(App):
              "planlist": "↑↓ item · c/Enter comment on item · p pin Main's last answer · d diff · Tab/Esc chat",
              "agents": "↑↓ agent · Enter inspect its context · d diff · c/m session.md · F2 config · Tab chat · just type to message the session"}.get(fid)
         if h is None:
-            h = {"HOME": "Enter send · Ctrl+J newline · @ file · / commands · F2 config · F3/Ctrl+S settings · /quit",
+            h = {"CHAT": "Enter send · /ask /quick /plan force how Main handles it · @ file · F2 config · F3/Ctrl+S settings · Ctrl+N home",
+                 "HOME": "Enter send · Ctrl+J newline · @ file · / commands · F2 config · F3/Ctrl+S settings · /quit",
                  "PLAN": "Enter send · Tab plan items/cards · /approve · /review · /model · F2 config · /quit",
                  "RUN": "Enter send · Tab agents/cards · Ctrl+D diff · /context · /stop · Ctrl+N home · F2 config · type /model, /stop, or a message",
                  "RESULT": "Ctrl+D diff · /context session.md · F2 config · /resume · Ctrl+N new task · ask Main below"}[m]
         self.q("#hint", Static).update(h)
         c = self.q("#composer", Composer)
-        c.border_title = {"RUN": "message the session", "RESULT": "ask Main"}.get(m, "message")
+        c.border_title = {"RUN": "message the session", "RESULT": "ask Main or describe a change", "CHAT": "ask Main or describe a change"}.get(m, "message")
 
     def _chips(self) -> None:
         mentions, urls = parse_mentions(self.q("#composer", Composer).text)
@@ -732,12 +740,14 @@ class AgentDeskApp(App):
         if not self.session:
             return
         ws = self.session.ws                                  # everything the session changed: its commits + what is not committed yet
-        d = await gitws.diff_since_base(ws)
-        commits = await gitws.git(ws.path, "log", "--oneline", f"{ws.base_commit}..HEAD", check=False)
+        if ws is None:
+            return self._sys("no worktree yet: nothing has been changed")
+        d = await gitws.diff_since_base(ws, ws.session_base)
+        commits = await gitws.git(ws.path, "log", "--oneline", f"{ws.session_base}..HEAD", check=False)
         pending = await gitws.changed_files(ws)
         head = (f"commits on {ws.branch}:\n" + "\n".join("  " + c for c in commits.splitlines()) + "\n" if commits else "no commits yet\n")
         head += f"not committed yet: {', '.join(pending)}\n" if pending else ""
-        self.push_screen(TextScreen(Text(head + "\n" + d if d else "(no changes yet)"), f"DIFF · {ws.branch} since {ws.base_commit[:7]}"))
+        self.push_screen(TextScreen(Text(head + "\n" + d if d else "(no changes yet)"), f"DIFF · {ws.branch} since {ws.session_base[:7]}"))
 
     async def action_context(self) -> None:
         if self.session:
@@ -796,8 +806,8 @@ class AgentDeskApp(App):
             if text.isdigit() and 1 <= int(text) <= len(target["options"]):
                 return await self._answer_question(target["id"], int(text) - 1, None)
             return await self._answer_question(target["id"], None, text)
-        if self.mode() == "RESULT":
-            return await self._ask_main(text)
+        if self.mode() in ("CHAT", "RESULT"):
+            return await self._turn(text)                   # each message is routed again: answer / quick / plan
         await self._ask_main(text)
 
     async def _start(self, text: str) -> None:
@@ -807,20 +817,19 @@ class AgentDeskApp(App):
         missing = [m for m in mentions if not (Path(m).expanduser() if m.startswith(("~", "/")) else self.repo / m).exists()]
         if missing:
             return self._sys("cannot find " + ", ".join("@" + m for m in missing) + " — fix the path (type @ and press Tab to pick a file) and send again")
-        self.busy = "creating session, worktree and reading your inputs…"
+        self.busy = "opening the conversation…"
         self.dirty = True
         try:
             ui = TuiUI(self)
-            self.session = await open_session(self.repo, text, self.loaded, self.router, ui, self.home, self.registry)
+            self.session = await open_chat(self.repo, text, self.loaded, self.router, ui, self.home, self.registry)
         except Exception as e:
             self.busy = ""
             self._sys(f"could not start: {e}")
             self.q("#composer", Composer).load_text(text)           # never lose what the user wrote
             return
-        self.busy = "starting Main…"
         self.t0 = time.monotonic()
         self.run_worker(self._pump(), exclusive=False, group="session")
-        self.run_worker(self._drive(), exclusive=False, group="session")
+        await self._turn(text)
 
     async def _open(self, sid: str) -> None:
         """Reopen an earlier session: replay its history into the screen, then continue where it makes sense."""
@@ -874,9 +883,29 @@ class AgentDeskApp(App):
             if self.proj.apply(e):
                 if e.type == "chat.main":
                     self.last_main_answer = e.payload.get("text", "")
-                if e.type in ("plan.version", "plan.approved", "question.opened", "clarify.asked", "agent.started"):
+                if e.type in ("plan.version", "plan.approved", "question.opened", "clarify.asked", "agent.started", "job.started"):
                     self.busy = ""                        # from here the live bubble / agent cards show what is happening
                 self.dirty = True
+
+    async def _turn(self, text: str, forced: str | None = None) -> None:
+        """One chat message: Main answers it, or starts a quick task / plan (then this runs it to its outcome)."""
+        self.busy = "Main is reading…"
+        self.outcome = None
+        self.dirty = True
+        async def go():
+            try:
+                out = await run_turn(self.session, text, forced)
+            except Exception as e:
+                out = None
+                self.proj.errors.append(repr(e))
+                self._sys(f"Main could not handle that: {e}")
+            if out in (None, "ANSWERED"):
+                self.busy = ""
+                self.outcome = self.proj.status if self.proj.mode == "RESULT" else None
+                self.dirty = True
+            else:
+                await self._finish(out)
+        self.run_worker(go(), exclusive=False, group="session")
 
     async def _drive(self) -> None:
         try:
@@ -895,7 +924,7 @@ class AgentDeskApp(App):
         self.result_seen = (len(self.proj.chat), False)       # the result opens at the top; only later messages scroll
         s = self.session
         try:
-            base = s.ws.base_commit
+            base = s.ws.session_base
             self.facts = {"files": (await gitws.git(s.ws.path, "diff", "--name-only", base, "HEAD", check=False)).splitlines(),
                           "commits": (await gitws.git(s.ws.path, "log", "--oneline", f"{base}..HEAD", check=False)).splitlines(),
                           "followups": [f"{n['id']} {n['text']}" for n in await s.mem.notes("followup")]}
@@ -956,6 +985,14 @@ class AgentDeskApp(App):
                 self.run_worker(self._checks(refresh="--refresh" in rest), exclusive=False)
             elif cmd == "/account":
                 await self._account(rest.split())
+            elif cmd in ("/ask", "/quick", "/plan"):
+                if not rest.strip():
+                    return self._sys(f"{cmd} <message>: {COMMANDS[cmd]}")
+                if s is None:
+                    return self._sys("start the conversation first, then use " + cmd)
+                if self.mode() not in ("CHAT", "RESULT"):
+                    return self._sys(f"{cmd} only applies when no plan is being made or run")
+                await self._turn(rest.strip(), cmd[1:].replace("ask", "answer"))
             elif cmd == "/config":
                 self.action_components()
             elif cmd in ("/context", "/diff", "/pin"):
@@ -1021,6 +1058,8 @@ class AgentDeskApp(App):
                 s._baseline_runner()
                 s.baseline_task = asyncio.create_task(s._precompute_baseline(refresh=True))
             elif cmd == "/setup":
+                if s.ws is None:
+                    return self._sys("no worktree yet: it is created when Main starts a task")
                 if self.outcome is None and not self.sched_idle():
                     return self._sys("the session is still running")
                 self._sys("preparing the worktree (" + (f"running `{s.cfg.workspace.setup}`" if s.cfg.workspace.setup else "linking dependencies") + ") then resuming…")

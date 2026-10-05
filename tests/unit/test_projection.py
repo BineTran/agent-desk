@@ -84,3 +84,21 @@ def test_triage_and_invalidation_show_in_chat():
     p.apply(ev(2, "architect.invalidated", {"version": 3}))
     assert p.chat[0]["text"] == "before_plan triage · v1→v2 · F1 fixed · F3 rejected: decided in D-001 · F4 question Q-1"
     assert "plan v3 changed" in p.chat[1]["text"]
+
+
+def test_chat_stays_in_chat_mode_and_a_job_resets_only_per_job_state():
+    p = Projection()
+    for e in [ev(1, "session.created", {"branch": None, "worktree": None}), ev(2, "chat.user", {"text": "q"}, "user"),
+              ev(3, "chat.main", {"kind": "answer", "text": "a"}, "main")]:
+        p.apply(e)
+    assert p.mode == "CHAT" and [m["who"] for m in p.chat] == ["you", "main"] and p.branch == ""
+    p.apply(ev(4, "workspace.created", {"branch": "agent-desk/s1", "worktree": "/w"}))
+    p.apply(ev(5, "job.started", {"job": 1, "kind": "plan", "brief": "x"}))
+    p.apply(ev(6, "plan.version", {"version": 1, "hash": "h1", "plan": PLAN}))
+    p.apply(ev(7, "plan.approved", {"version": 1, "hash": "h1", "by": "user"}))
+    p.apply(ev(8, "task.done", {"commit": "abc"}, task="T1"))
+    p.apply(ev(9, "final.summary", {"text": "ok", "ac_evidence": []}))
+    assert p.branch == "agent-desk/s1" and p.mode == "RESULT" and p.tasks == {"T1": "done"}
+    p.apply(ev(10, "job.started", {"job": 2, "kind": "quick", "brief": "y"}))
+    assert p.plan is None and p.tasks == {} and p.summary is None and p.mode == "RUN" and p.approved is False
+    assert p.chat[0]["text"] == "q" and p.chat[-1]["text"].startswith("— J2 quick")        # chat survives; a divider marks the new job

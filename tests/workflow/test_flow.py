@@ -133,7 +133,7 @@ async def test_replay_reconstructs_session_from_events_alone(repo, tmp_path):
     st = await EventStore(tmp_path / "home" / "db" / "agent-desk.sqlite").open()    # a different connection = a "reload"
     ev = await st.events(s.sid)
     assert [e.type for e in ev if e.type.startswith("task.")] == ["task.done", "task.done"]
-    assert ev[-1].type == "final.summary" and ev[0].type == "session.created"
+    assert ev[-1].type == "job.finished" and ev[-2].type == "final.summary" and ev[0].type == "session.created"
 
 
 async def test_quota_is_a_state_not_a_failure(repo, tmp_path):

@@ -105,7 +105,7 @@ class Projection:
     branch: str = ""
     worktree: str = ""
     status: str = "CREATED"
-    mode: str = "PLAN"               # PLAN | RUN | RESULT
+    mode: str = "CHAT"               # CHAT | PLAN | RUN | RESULT
     started_ts: str = ""
     last_ts: str = ""
     plan_version: int = 0
@@ -180,7 +180,7 @@ class Projection:
     # ---- session / plan ----
     def _on_session_created(self, e):
         p = e.payload
-        self.session_id, self.branch, self.worktree = e.session_id, p.get("branch", ""), p.get("worktree", "")
+        self.session_id, self.branch, self.worktree = e.session_id, p.get("branch") or "", p.get("worktree") or ""
         self.status = "CREATED"
 
     def _on_workspace_prepared(self, e):
@@ -188,6 +188,24 @@ class Projection:
 
     def _on_workspace_setup(self, e):
         self.workspace = {**getattr(self, "workspace", {}), "setup": e.payload}
+
+    def _on_workspace_created(self, e):
+        self.branch, self.worktree = e.payload.get("branch", ""), e.payload.get("worktree", "")
+
+    def _on_chat_routed(self, e): pass                      # shown by the log line and the chat.main bubble
+
+    def _on_job_started(self, e):
+        """A new quick task / plan in the same conversation: per-job state starts over; chat, tokens and log stay."""
+        p = e.payload
+        self.plan = self.pending = self.summary = self.quota_hit = None
+        self.plan_version, self.plan_hash, self.approved = 0, "", False
+        self.versions, self.agents, self.tasks, self.verify, self.questions = [], {}, {}, {}, {}
+        self.gate_unmet, self.errors, self.followups, self.annotations = [], [], [], {}
+        self.architect = {"calls": 0, "tokens": 0, "advice": "—", "active": None, "reviews": []}
+        self.mode, self.status = ("RUN" if p.get("kind") == "quick" else "PLAN"), ("RUNNING" if p.get("kind") == "quick" else "PLANNING")
+        self.chat.append({"who": "sys", "text": f"— J{p.get('job')} {p.get('kind')}: {str(p.get('brief') or '')[:100]}"})
+
+    def _on_job_finished(self, e): self.status = e.payload.get("outcome", self.status)
 
     def _on_session_planning(self, e): self.status, self.mode = "PLANNING", "PLAN"
 
@@ -470,6 +488,16 @@ def humanize(e: Event, pj: "Projection") -> tuple[str, str]:
         return ("you", "architect review skipped") if p.get("by") else ("architect", f"{p.get('trigger')} skipped · {p.get('reason')}")
     if t == "session.reopened":
         return "session", f"reopened ({p.get('status')})" + (" · Main continues its thread" if p.get("main_thread") else " · Main starts from session.md")
+    if t == "chat.routed":
+        return "main", f"→ {p.get('kind')} (by {p.get('by')})" + (f" · {p['reason'][:100]}" if p.get("reason") else "")
+    if t == "job.started":
+        return "session", f"job {p.get('job')} · {p.get('kind')}"
+    if t == "job.finished":
+        return "session", f"job {p.get('job')} · {p.get('outcome')}"
+    if t == "workspace.created":
+        return "git", f"worktree on branch {p.get('branch')}"
+    if t == "workspace.stashed":
+        return "git", f"leftover changes of job {p.get('job')} stashed ({p.get('stash')})"
     if t == "main.rotated":
         return "main", f"fresh thread seeded from session.md ({p.get('reason')})"
     return who, (t + " " + _short(e)).strip()

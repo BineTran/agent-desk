@@ -18,6 +18,8 @@ roles:
   deployer:   { provider: codex, tier: strong, effort: medium, access: write, network: true, limits: { max_input_tokens: 1500000, max_tool_calls: 40 } }
   # gatekeeper: decides when an agent wants to read env vars or secret files (approval.env_gate)
   debug:      { provider: claude, model: haiku, effort: low, access: read }
+  # cheap first answer for trivial chat questions (chat.triage: cascade); hands anything else over to main
+  chat:       { provider: claude, model: haiku, effort: low, access: read, enabled: false, limits: { max_input_tokens: 300000, max_tool_calls: 8 } }
 decision:
   fallback: main
   points:
@@ -28,6 +30,7 @@ decision:
 scheduler: { max_total_agents: 6, max_writers: 1, max_retries_per_task: 2 }
 context: { packet_max_tokens: 6000, failure_tail_lines: 60, main_rotate_at: 0.6 }
 quota: { on_limit: wait }
+chat: { route: auto, triage: main, quick_enabled: true, max_quick_files: 3 }
 review: { triggers: [before_plan, error_repeats, before_done], max_rounds: 2, max_replans_per_task: 1 }
 verification: {}
 approval: { require_for: [git_push, destructive_filesystem, db_migration, deployment], env_gate: debug }

@@ -13,7 +13,7 @@ from agent_desk.tui.app import AgentDeskApp
 from agent_desk.tui.composer import Composer, complete
 from agent_desk.tui.screens import TextScreen
 
-from ..workflow.conftest import NOGLOBAL, Script, plan, task
+from ..workflow.conftest import NOGLOBAL, Script, plan, qtask, route, task
 
 SIZE = (170, 55)
 
@@ -434,7 +434,11 @@ async def test_main_answers_show_on_the_result_screen(repo, tmp_path):
     """Regression (s-69b1): after FAILED, Main answered the chat but the RESULT screen never showed it."""
     (repo / ".agent-desk.yaml").write_text('verification:\n  unit: { command: "test ! -f a.txt || grep -q good a.txt" }\n')
     reply = lambda spec: MainReply(kind="answer", text="the output is a docs-only contract", plan=None)
-    app, rt = make_app(repo, tmp_path, Script(plan(task("T1", write=True)), worker=lambda spec, n: ("a.txt", "bad"), reply=reply))
+    msgs = []
+    def routed(spec):                                         # the first message is a plan; later ones are plain questions
+        msgs.append(1)
+        return route("plan", "plan it") if len(msgs) == 1 else route("answer", "the output is a docs-only contract")
+    app, rt = make_app(repo, tmp_path, Script(plan(task("T1", write=True)), worker=lambda spec, n: ("a.txt", "bad"), reply=reply, route=routed))
     async with app.run_test(size=SIZE) as pilot:
         await send(pilot, app, "make a.txt good")
         await until(pilot, lambda: app.session and app.session.studio)
@@ -501,3 +505,36 @@ async def test_diff_shows_committed_and_uncommitted_changes(repo, tmp_path):
         t = str(body)
         assert "chore(agent-desk): write a.txt (T1)" in t and "+hello-from-agent" in t
         assert "not committed yet: b.txt" in t and "+not committed" in t
+
+
+async def test_first_question_is_answered_in_chat_without_plan_or_worktree(repo, tmp_path):
+    app, rt = make_app(repo, tmp_path, Script(plan(task("T1")), route=lambda sp: route("answer", "calc.py holds x = 1")))
+    async with app.run_test(size=SIZE) as pilot:
+        await send(pilot, app, "what is in @calc.py ?")
+        await see(pilot, app, "calc.py holds x = 1")
+        assert app.mode() == "CHAT" and app.session.ws is None and app.busy == ""
+        assert not [x for x in rt.specs if x.role.role != "main"]
+
+
+async def test_quick_goes_chat_run_result_and_a_message_from_result_starts_job_two(repo, tmp_path):
+    n = []
+    def routed(sp):
+        n.append(1)
+        return route("quick", "edit", task=qtask("a.txt" if len(n) == 1 else "b.txt"))
+    app, rt = make_app(repo, tmp_path, Script(plan(task("T1")), route=routed, worker=lambda sp, k: ("a.txt", "1") if "a.txt" in sp.prompt else ("b.txt", "2")))
+    async with app.run_test(size=SIZE) as pilot:
+        await send(pilot, app, "create a.txt")
+        await until(pilot, lambda: app.outcome == "COMPLETED" and app.mode() == "RESULT", timeout=30)
+        assert app.session.job == 1 and not app.session.studio.pending
+        await send(pilot, app, "now b.txt")
+        await until(pilot, lambda: app.session.job == 2 and app.outcome == "COMPLETED" and app.mode() == "RESULT", timeout=30)
+        assert (app.session.ws.path / "b.txt").exists()
+
+
+async def test_plan_command_forces_the_plan_flow(repo, tmp_path):
+    app, rt = make_app(repo, tmp_path, Script(plan(task("T1")), route=lambda sp: route("answer", "never used")))
+    async with app.run_test(size=SIZE) as pilot:
+        await send(pilot, app, "hello")
+        await see(pilot, app, "never used")
+        await send(pilot, app, "/plan add feature X")
+        await until(pilot, lambda: app.mode() == "PLAN" and app.proj.plan is not None)

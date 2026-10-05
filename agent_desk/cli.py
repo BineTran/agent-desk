@@ -441,9 +441,10 @@ def _doctor(repo: Path, cfg, home: Path, refresh: bool = False) -> bool:
 
 @app.command("headless")
 def headless(task: str, repo: Path = Path("."), set_: list[str] = typer.Option([], "--set"),
-             home: Path = Path.home() / ".agent-desk"):
+             home: Path = Path.home() / ".agent-desk",
+             route: str = typer.Option("plan", help="plan: always the full plan flow · auto: Main decides (answer / quick / plan) · answer · quick")):
     """Run a task end-to-end with no UI (accepts recommended answers, auto-approves the plan, refuses risky commands)."""
-    from .graph import open_session, run_graph
+    from .graph import open_chat, open_session, run_graph, run_turn
     from .plugins import default_registry
     from .runtime.registry import RuntimeRouter
     from .ui import HeadlessUI
@@ -451,7 +452,10 @@ def headless(task: str, repo: Path = Path("."), set_: list[str] = typer.Option([
 
     async def go():
         rt = RuntimeRouter(l.config, default_registry(l.config.plugins))
-        s = await open_session(repo.resolve(), task, l, rt, HeadlessUI(), home)
+        if route == "plan":
+            s = await open_session(repo.resolve(), task, l, rt, HeadlessUI(), home)
+        else:
+            s = await open_chat(repo.resolve(), task, l, rt, HeadlessUI(), home)
 
         async def tail():
             async for e in s.bus.subscribe(s.sid):
@@ -460,13 +464,18 @@ def headless(task: str, repo: Path = Path("."), set_: list[str] = typer.Option([
                     return
         t = asyncio.create_task(tail())
         try:
-            out = await run_graph(s)
+            if route == "plan":
+                out = await run_graph(s)
+            else:
+                out = await run_turn(s, task, None if route == "auto" else route)
+                if out == "ANSWERED":
+                    typer.echo("\n" + next((e.payload["text"] for e in reversed(await s.bus.store.events(s.sid)) if e.type == "chat.main"), ""))
             await asyncio.sleep(0.3)
         finally:
             t.cancel()
             await s.close()
-        typer.echo(f"\n{out}  session={s.sid}  branch={s.ws.branch}\nworktree={s.ws.path}")
-        return out
+        typer.echo(f"\n{out}  session={s.sid}" + (f"  branch={s.ws.branch}\nworktree={s.ws.path}" if s.ws else ""))
+        return "COMPLETED" if out == "ANSWERED" else out
     out = asyncio.run(go())
     raise typer.Exit(0 if out == "COMPLETED" else 1)
 
