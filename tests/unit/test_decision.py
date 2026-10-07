@@ -186,3 +186,27 @@ async def test_swapping_llm_for_jev_is_only_config(tmp_path):
     p2, _ = pipe(cfg2)
     pt = p2.point("retry_or_stop")
     assert type(p2._engine(pt.engine, pt.provider, pt.model)).__name__ == "JevEngine"
+
+
+def _guard(kind="quick", outputs=("a.py",), text="rename foo", tkind="implementation", **chat):
+    from agent_desk.config.schema import Chat
+    from agent_desk.contracts import TaskSpec
+    from agent_desk.decision.rules import route_guard
+    t = TaskSpec(id="T1", title="t", goal="g", kind=tkind, depends_on=[], relevant_files=[], files_known=False, requires_write=True,
+                 acceptance_criteria=["ac"], outputs=list(outputs))
+    return route_guard(kind, t, text, Chat(**chat))[0]
+
+
+def test_route_guard_only_moves_up():
+    assert _guard() == "quick"
+    assert _guard("answer") == "answer" and _guard("plan") == "plan"
+    assert _guard(text="please push it") == "plan" and _guard(text="run the Migration") == "plan"
+    assert _guard(outputs=("a", "b", "c", "d")) == "plan" and _guard(outputs=("a", "b", "c", "d"), max_quick_files=4) == "quick"
+    assert _guard(outputs=()) == "plan" and _guard(outputs=("src/*.py",)) == "plan"
+    assert _guard(tkind="investigation") == "plan" and _guard(quick_enabled=False) == "plan"
+
+
+def test_route_guard_without_task_goes_to_plan():
+    from agent_desk.config.schema import Chat
+    from agent_desk.decision.rules import route_guard
+    assert route_guard("quick", None, "x", Chat())[0] == "plan"

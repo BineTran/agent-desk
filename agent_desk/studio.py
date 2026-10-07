@@ -199,7 +199,7 @@ class Studio:
         self.pending = None
         v = await self._push(p.plan, "user-comment" if p.item else "user-question", f"{d.id}: {'material' if p.diff.material else 'non-material'}")
         await self.s.emit("decision.recorded", d.model_dump(), source="user")
-        if not self.locked and p.diff.material and "before_plan" in self.s.cfg.review.triggers:
+        if not self.locked and p.diff.material and "before_plan" in self.s.triggers:
             self.s.architect_reviewed = False                                # the architect never saw this version
             await self.s.emit("architect.invalidated", {"version": v.n}, source="user")
         if self.locked:

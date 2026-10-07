@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from agent_desk.config.loader import load
-from agent_desk.contracts import MAIN_FIELD, AgentReport, ArchitectReview, MainReply, Plan, Questions, Summary, TaskSpec, Triage
+from agent_desk.contracts import MAIN_FIELD, AgentReport, ArchitectReview, MainReply, Plan, Questions, Route, Summary, TaskSpec, Triage
 from agent_desk.runtime.base import RunResult
 from agent_desk.runtime.mock import MockRuntime
 
@@ -53,9 +53,9 @@ def main_turn(schema_name: str, inner_json: str) -> str:
 
 class Script:
     """Programmable agent behaviour. Records everything; worker edits real files in the worktree."""
-    def __init__(self, plan_, questions=None, worker=None, worker_status="completed", worker_summary=None, reply=None, architect=None, triage=None, revise=None):
+    def __init__(self, plan_, questions=None, worker=None, worker_status="completed", worker_summary=None, reply=None, architect=None, triage=None, revise=None, route=None, chat=None):
         self.architect, self.triage, self.revise, self.reviews = architect, triage, revise, []
-        self.reply, self.prompts = reply, []
+        self.reply, self.prompts, self.route, self.chat = reply, [], route, chat
         self.worker_status, self.worker_summary = worker_status, worker_summary
         self.plan, self.questions, self.worker = plan_, questions or Questions(questions=[]), worker or (lambda spec, n: ("a.txt", "x"))
         self.calls: dict[str, int] = {}
@@ -69,6 +69,13 @@ class Script:
 
     def _answer(self, spec):
         n = spec.schema_name
+        if n == "Route":
+            if spec.role.role == "chat":
+                r = self.chat(spec) if self.chat else Route(kind="escalate", text="", brief=None, task=None, reason="too big")
+            else:
+                self.prompts.append(spec.prompt)
+                r = self.route(spec) if self.route else Route(kind="plan", text="Making a plan.", brief=None, task=None, reason="default")
+            return RunResult("completed", r.model_dump_json(), "th-chat" if spec.role.role == "chat" else "th-main")
         if n == "Questions":
             return RunResult("completed", self.questions.model_dump_json(), "th-main")
         if n == "ArchitectReview":
@@ -102,3 +109,12 @@ class Script:
         else:
             rep = report(evidence=[__import__("agent_desk.contracts", fromlist=["Evidence"]).Evidence(kind="file", ref="calc.py:1-1", note="add lives here")])
         return RunResult("completed", rep.model_dump_json(), f"th-{spec.run_id}")
+
+
+def qtask(*outputs, title="tweak"):
+    """The TaskSpec Main puts in a quick route."""
+    return task("T1", write=True, title=title, outputs=outputs or ("a.txt",))
+
+
+def route(kind, text="ok", task=None, brief=None, reason="test"):
+    return Route(kind=kind, text=text, brief=brief, task=task, reason=reason)

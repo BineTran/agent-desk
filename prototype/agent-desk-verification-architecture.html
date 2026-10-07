@@ -1,0 +1,966 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Desk Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f5f6f8; --surface:#ffffff; --surface-2:#f0f2f6; --text:#1b2130; --muted:#5d6678; --border:#dde2ea;
+  --accent:#2c66d6; --accent-soft:#e6eefc; --ok:#1e8449; --ok-soft:#e5f5ec; --bad:#c2410c; --bad-soft:#fdeee6;
+  --need:#a15c00; --need-soft:#fff3d6;
+  /* lanes, after the VeriHarness figures */
+  --blue:#1a62d6;  --blue-soft:#e9f1fd;  --blue-line:#7aa7ef;
+  --amber:#a85a00; --amber-soft:#fdf6df; --amber-line:#efb52a;
+  --red:#c42a22;   --red-soft:#fdeceb;   --red-line:#ea6b62;
+  --green:#18803e; --green-soft:#e8f5ec; --green-line:#56b77a;
+  --grey:#5d6678;  --grey-soft:#f3f4f7;  --grey-line:#c3c9d4;
+  --t-bg:#0c1018; --t-panel:#0f1521; --t-line:#2a3650; --t-text:#c9d2de; --t-dim:#6f7c90;
+  --t-main:#5fd3d3; --t-agent:#7aa2f7; --t-jev:#7ee08a; --t-arch:#c3a6ff; --t-you:#f0c25a; --t-bad:#ff7b72;
+  --shadow:0 1px 2px rgba(20,30,50,.06),0 4px 14px rgba(20,30,50,.05);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0a0d13; --surface:#121824; --surface-2:#182031; --text:#e2e7f0; --muted:#98a2b5; --border:#263149;
+    --accent:#7aa2f7; --accent-soft:#1b2640; --ok:#7ee08a; --ok-soft:#14281c; --bad:#ff9b72; --bad-soft:#2c1a14;
+    --need:#f0c25a; --need-soft:#2b2412;
+    --blue:#8db4ff; --blue-soft:#142038; --blue-line:#3b63a8;
+    --amber:#f3c55a; --amber-soft:#2a2210; --amber-line:#8a6a1c;
+    --red:#ff8f86; --red-soft:#2d1615; --red-line:#93413b;
+    --green:#7ddc98; --green-soft:#11261a; --green-line:#2f7a4a;
+    --grey:#98a2b5; --grey-soft:#161d2b; --grey-line:#334058;
+    --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a0d13; --surface:#121824; --surface-2:#182031; --text:#e2e7f0; --muted:#98a2b5; --border:#263149;
+  --accent:#7aa2f7; --accent-soft:#1b2640; --ok:#7ee08a; --ok-soft:#14281c; --bad:#ff9b72; --bad-soft:#2c1a14;
+  --need:#f0c25a; --need-soft:#2b2412;
+  --blue:#8db4ff; --blue-soft:#142038; --blue-line:#3b63a8;
+  --amber:#f3c55a; --amber-soft:#2a2210; --amber-line:#8a6a1c;
+  --red:#ff8f86; --red-soft:#2d1615; --red-line:#93413b;
+  --green:#7ddc98; --green-soft:#11261a; --green-line:#2f7a4a;
+  --grey:#98a2b5; --grey-soft:#161d2b; --grey-line:#334058;
+  --shadow:none;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:14px/1.5 Inter,system-ui,-apple-system,sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+code,.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:.92em}
+h2{font-size:20px;letter-spacing:-.01em;margin:0 0 4px}
+h3{font-size:15px;margin:0}
+p{margin:0}
+.muted{color:var(--muted)}
+svg.i{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- top bar ---------- */
+.top{display:flex;align-items:center;gap:12px 18px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:5}
+@media (max-width:640px){.top{position:static;padding:12px 16px}.page{padding:14px 16px 32px}}
+.brand{display:flex;flex-direction:column;min-width:0}
+.brand h1{font-size:17px;margin:0;font-weight:800;letter-spacing:-.01em}
+.brand .sub{color:var(--muted);font-size:12.5px}
+.tabs{display:flex;gap:4px;background:var(--surface-2);border-radius:10px;padding:3px;flex-wrap:wrap}
+.tab{border:0;background:none;border-radius:8px;padding:6px 12px;font-size:13px;font-weight:600;color:var(--muted)}
+.tab[aria-selected="true"]{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.sp{flex:1}
+.btn{border:1px solid var(--border);background:var(--surface);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+:root[data-theme="dark"] .btn.primary{color:#0a0d13}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .btn.primary{color:#0a0d13}}
+.btn:disabled{opacity:.4;cursor:default}
+
+.page{max-width:1480px;margin:0 auto;padding:18px 20px 40px}
+.view{display:none}
+.view.on{display:block}
+.intro{display:flex;gap:16px 28px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px}
+.intro .lead{max-width:760px;color:var(--muted)}
+.legend{display:flex;gap:8px;flex-wrap:wrap;font-size:12px}
+.lg{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--surface);border-radius:999px;padding:2px 10px 2px 6px}
+.sw{width:12px;height:12px;border-radius:4px;border:1.5px solid}
+
+/* ---------- badges ---------- */
+.ph{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:6px;font:700 11px/1 Inter;color:#fff}
+.ph.D{background:#6b5bd2}.ph.A{background:#c42a22}.ph.B{background:#1a62d6}.ph.C{background:#a85a00}
+:root[data-theme="dark"] .ph{color:#0a0d13}
+:root[data-theme="dark"] .ph.D{background:#b3a6ff}:root[data-theme="dark"] .ph.A{background:#ff8f86}:root[data-theme="dark"] .ph.B{background:#8db4ff}:root[data-theme="dark"] .ph.C{background:#f3c55a}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .ph{color:#0a0d13}
+  :root:not([data-theme="light"]) .ph.D{background:#b3a6ff}:root:not([data-theme="light"]) .ph.A{background:#ff8f86}
+  :root:not([data-theme="light"]) .ph.B{background:#8db4ff}:root:not([data-theme="light"]) .ph.C{background:#f3c55a}
+}
+.st{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;border-radius:5px;padding:1px 6px;border:1px solid var(--border);color:var(--muted)}
+.st.new{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.st.changed{color:var(--need);border-color:var(--need);background:var(--need-soft)}
+.st.optin{color:var(--blue);border:1px dashed var(--blue)}
+
+/* ---------- shared bits ---------- */
+.chips{display:flex;gap:5px;flex-wrap:wrap}
+.chip{font-size:11.5px;border:1px solid var(--border);background:var(--surface-2);border-radius:999px;padding:1px 8px;white-space:nowrap}
+.chip.mono{font-family:"JetBrains Mono",monospace;font-size:11px}
+.parlab{font-size:11px;font-weight:600;color:var(--muted);text-align:center;display:flex;align-items:center;gap:8px}
+.parlab::before,.parlab::after{content:"";flex:1;height:1px;background:var(--border)}
+.cost{display:inline-flex;gap:3px;vertical-align:middle}
+.cost i{width:14px;height:6px;border-radius:3px;background:var(--surface-2);border:1px solid var(--border)}
+.cost i.on{background:var(--bad);border-color:var(--bad)}
+
+/* ---------- architecture: agent tree (terminal, always dark) ---------- */
+.archtop{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);gap:12px 18px;align-items:start;margin-bottom:12px}
+@media (max-width:980px){.archtop{grid-template-columns:minmax(0,1fr)}}
+.howto{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)}
+.howto b{color:var(--text)}
+.ctl{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.ctl .btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ctl .cap{font-size:13px;min-height:40px}
+.ctl .cap b{display:block;font-size:14px}
+.prog{display:flex;gap:3px}
+.prog i{flex:1;height:4px;border-radius:2px;background:var(--surface-2)}
+.prog i.on{background:var(--accent)}
+
+.tw{
+  --c-main:#5fd3d3; --c-agent:#7aa2f7; --c-dec:#7ee08a; --c-arch:#c3a6ff; --c-you:#f0c25a;
+  --c-ver:#ffb86b; --c-res:#f3c55a; --c-cha:#ff7b72; --c-adj:#7ee08a; --c-guard:#93a1b8; --c-wire:#3a4866;
+  background:var(--t-bg);color:var(--t-text);border:1px solid #1d2638;border-radius:14px;
+  box-shadow:0 10px 40px rgba(0,0,0,.25);font:12.5px/1.55 "JetBrains Mono",ui-monospace,Menlo,monospace;overflow:hidden}
+.tw .chrome{display:flex;align-items:center;gap:7px;padding:9px 14px;background:#090c12;border-bottom:1px solid #1a2233;color:var(--t-dim);font-size:11.5px}
+.tw .chrome i{width:11px;height:11px;border-radius:50%;display:inline-block}
+.tw .chrome span{flex:1;text-align:center;margin-right:40px}
+.tw .ttl{text-align:center;font-weight:700;letter-spacing:.08em;padding:14px 10px 12px;margin:0 18px;border-bottom:2px solid #1f2a3d;display:flex;gap:6px 18px;justify-content:center;flex-wrap:wrap}
+.tw .lgd{display:flex;justify-content:center;gap:4px 22px;flex-wrap:wrap;padding:10px 12px 4px;color:var(--t-dim)}
+.tw .lgd span::before{content:"■ ";color:var(--k)}
+.k-main{--k:var(--c-main)}.k-agent{--k:var(--c-agent)}.k-dec{--k:var(--c-dec)}.k-arch{--k:var(--c-arch)}.k-ver{--k:var(--c-ver)}.k-you{--k:var(--c-you)}.k-guard{--k:var(--c-guard)}
+.fg-main{color:var(--c-main)}.fg-agent{color:var(--c-agent)}.fg-dec{color:var(--c-dec)}.fg-arch{color:var(--c-arch)}.fg-ver{color:var(--c-ver)}
+.fg-you{color:var(--c-you)}.fg-res{color:var(--c-res)}.fg-cha{color:var(--c-cha)}.fg-adj{color:var(--c-adj)}.fg-dim{color:var(--t-dim)}.fg-guard{color:var(--c-guard)}
+
+.tree{display:grid;grid-template-columns:minmax(0,236px) minmax(0,1fr) minmax(0,236px);column-gap:30px;padding:14px 18px 6px}
+.rl{--rc:var(--c-arch);border-left:1.5px solid var(--rc);border-right:1.5px solid var(--rc);padding:3px 12px;position:relative;color:var(--t-dim);min-width:0}
+.rl.R{--rc:#465570}
+.rl.rtop{border-top:1.5px solid var(--rc);padding-top:10px}
+.rl.rbot{border-bottom:1.5px solid var(--rc);padding-bottom:10px}
+.rl.rmid{display:flex;align-items:center}
+.rl h4{margin:0;text-align:center;font-size:12.5px;letter-spacing:.08em;color:var(--rc)}
+.rl.R h4{color:#c3cede}
+.rl .sub{text-align:center;color:var(--t-dim)}
+.rl p{margin:0}
+.rl .em{color:var(--c-arch);font-weight:700}
+.mo{border:0;background:none;padding:2px 0;color:var(--t-text);font:inherit;display:flex;align-items:center;gap:8px;text-align:left;cursor:pointer;border-radius:4px}
+.mo::before{content:"◇";color:var(--c-arch)}
+.mo small{color:var(--t-dim);font-size:11px}
+.mo.hl{color:#fff}
+.mo.hl::before{content:"◆"}
+.lk{position:absolute;right:-31px;top:50%;width:30px;border-top:1.5px dashed #5b5480;pointer-events:none}
+.lk::after{content:"";position:absolute;right:-1px;top:-5px;border:4.5px solid transparent;border-left:7px solid #5b5480;border-right:0}
+.mo.hl ~ .lk{border-top-color:var(--c-arch)}
+.mo.hl ~ .lk::after{border-left-color:var(--c-arch)}
+.g{border:0;background:none;padding:3px 0;color:var(--t-text);font:inherit;text-align:left;cursor:pointer;display:block;width:100%;border-radius:4px}
+.g b{color:#dfe6f1}
+.g .d{display:block;color:var(--t-dim)}
+.g:hover b,.mo:hover{color:#fff}
+.g.hl{background:rgba(240,194,90,.09);box-shadow:0 0 0 1px rgba(240,194,90,.5)}
+.g.hl b{color:var(--c-you)}
+
+.c{display:flex;flex-direction:column;align-items:center;min-width:0}
+.bx{--bc:var(--c-agent);border:1.5px solid var(--bc);background:transparent;color:var(--t-text);font:inherit;padding:9px 14px;text-align:center;
+  width:min(100%,var(--w,440px));cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:1px;transition:box-shadow .25s,background .25s,opacity .25s}
+.bx:hover{background:rgba(255,255,255,.035)}
+.bx:focus-visible,.mo:focus-visible,.g:focus-visible{outline:2px solid var(--c-you);outline-offset:2px}
+.bx .h{color:var(--bc);font-weight:700}
+.bx .row{color:var(--t-text)}
+.bx .mut{color:var(--t-dim)}
+.bx.hl{background:color-mix(in srgb,var(--bc) 11%,transparent);box-shadow:0 0 0 1.5px var(--bc),0 0 26px -6px var(--bc)}
+.playing .bx:not(.hl){opacity:.5}
+.bx.main{--bc:var(--c-main)}.bx.dec{--bc:var(--c-dec)}.bx.you{--bc:var(--c-you)}.bx.ver{--bc:var(--c-ver)}
+.bx.pool{--bc:var(--c-agent);border-style:dashed}.bx.fin{--bc:var(--c-main)}
+.ef{letter-spacing:-1px}
+.ef .off{color:#2c3850}
+.tag2{border:1px solid currentColor;border-radius:3px;padding:0 4px;font-size:10.5px}
+.vc{width:0;border-left:1.5px solid var(--c-wire);height:26px;position:relative}
+.vc.dot::after{content:"";position:absolute;left:-4.75px;top:50%;width:8px;height:8px;margin-top:-4px;border-radius:50%;background:#dfe6f1}
+.vc.arrow::after{content:"▼";position:absolute;left:-5px;bottom:-9px;font-size:10px;color:var(--c-main)}
+.vlab{padding:4px 0;color:var(--t-text);text-align:center}
+.vlab .fg-dim{white-space:nowrap}
+
+.fan{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;width:100%;position:relative;height:22px}
+.fan::before{content:"";position:absolute;left:12.5%;right:12.5%;border-top:1.5px solid var(--c-wire)}
+.fan.out::before{top:0}.fan.in::before{bottom:0}
+.fan span{position:relative}
+.fan span::before{content:"";position:absolute;left:50%;top:0;bottom:0;border-left:1.5px solid var(--c-wire)}
+.fan.out span::after{content:"▼";position:absolute;left:50%;bottom:-8px;transform:translateX(-50%);font-size:10px;color:var(--c-agent)}
+.ags{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;width:100%}
+.ags .bx{width:100%;padding:8px 6px}
+.ag-st{color:var(--t-dim)}
+.ag-st.run{color:var(--c-agent)}.ag-st.ok{color:var(--c-dec)}.ag-st.bad{color:var(--c-cha)}
+
+.dtab{display:grid;grid-template-columns:auto minmax(60px,1fr) auto auto;gap:3px 10px;align-items:center;text-align:left;width:100%;margin:6px 0 2px}
+.dtab .nm{color:var(--t-text)}
+.dbar{height:12px;background:#141c2a;position:relative}
+.dbar i{position:absolute;left:0;top:0;bottom:0;background:var(--c-dec)}
+.dbar i.rule{background:repeating-linear-gradient(90deg,var(--c-dec) 0 6px,transparent 6px 9px)}
+.dbar i.you{background:var(--c-you)}
+.dtab .p{color:var(--t-text)}
+.sharp{color:var(--c-dec)}.split{color:var(--c-you)}
+
+.exits{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;width:min(100%,640px);margin-top:6px;text-align:center}
+.exits div{border-top:1.5px solid var(--c-wire);padding-top:4px}
+.pflow{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin:6px 0 2px}
+.sb{--sc:var(--c-agent);border:1px solid var(--sc);padding:3px 7px;color:var(--sc);white-space:nowrap}
+.sb.rsv{--sc:var(--c-res)}.sb.cha{--sc:var(--c-cha)}.sb.adj{--sc:var(--c-adj)}.sb.ver{--sc:var(--c-ver)}
+.par2{display:flex;flex-direction:column;gap:3px;align-items:stretch}
+.par2 small{color:var(--t-dim);text-align:center;font-size:10.5px}
+.ar{color:var(--t-dim)}
+
+fieldset.slog{margin:14px 18px 0;border:1.5px solid #2c3850;padding:6px 12px 10px;min-width:0}
+fieldset.slog legend{padding:0 8px;color:var(--t-dim);border-left:1.5px solid #2c3850;border-right:1.5px solid #2c3850}
+.lines{max-height:228px;min-height:140px;overflow:auto}
+.ll{display:grid;grid-template-columns:72px 92px minmax(0,1fr) auto;gap:0 12px;white-space:pre-wrap}
+.ll .t{color:var(--t-dim)}
+.ll .w{font-weight:700}
+.ll .m{color:var(--t-dim);text-align:right}
+.ll.new{animation:fade .4s ease}
+.prompt{padding:12px 18px 14px;display:flex;flex-direction:column;gap:2px}
+.prompt .sl{display:flex;gap:4px 18px;flex-wrap:wrap;color:var(--t-dim)}
+.prompt .sl b{color:var(--t-text);font-weight:600}
+.caret{display:inline-block;width:8px;height:14px;background:var(--t-text);vertical-align:-2px;animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+@keyframes fade{from{opacity:0;transform:translateY(3px)}to{opacity:1}}
+
+.insp{margin-top:14px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 16px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:8px 22px}
+@media (max-width:880px){.insp{grid-template-columns:minmax(0,1fr)}}
+.insp .hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;grid-column:1/-1}
+.insp .hd h3{font-size:16px}
+.insp .sw2{width:12px;height:12px;border-radius:3px}
+.kv{display:grid;grid-template-columns:76px minmax(0,1fr);gap:6px 10px;font-size:12.5px;margin:0}
+.kv dt{color:var(--muted);font-weight:600}
+.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.insp .what{font-size:13.5px}
+.insp .vh{font-size:12.5px;border-left:3px solid var(--accent);padding:4px 10px;background:var(--accent-soft);border-radius:0 8px 8px 0;margin-top:8px}
+
+@media (max-width:1100px){.tree{grid-template-columns:minmax(0,190px) minmax(0,1fr) minmax(0,190px);column-gap:26px}}
+@media (max-width:900px){
+  .tree{display:flex;flex-direction:column;padding:12px 12px 4px}
+  .c{order:0}.rl.L{order:1}.rl.R{order:2}
+  .rl.L.rtop{margin-top:16px}.rl.R.rtop{margin-top:12px}
+  .lk{display:none}
+  .ags{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .fan{display:none}
+  .exits{grid-template-columns:minmax(0,1fr)}
+  .ll{grid-template-columns:62px minmax(0,1fr)}
+  .ll .w{grid-column:2}.ll .x{grid-column:2}.ll .m{grid-column:2;text-align:left}
+  .ll .t{grid-row:span 3}
+  fieldset.slog{margin:12px 10px 0}
+  .prompt{padding:10px 12px 12px}
+  .tw .ttl{margin:0 10px}
+}
+
+/* ---------- example (method.png) ---------- */
+.ex{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr) minmax(0,300px);gap:14px;align-items:stretch}
+@media (max-width:1180px){.ex{grid-template-columns:minmax(0,1fr)}}
+.lane{border:1.5px solid;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.lane.blue{border-color:var(--blue-line);background:var(--blue-soft)}
+.lane.amber{border-color:var(--amber-line);background:var(--amber-soft)}
+.lane.red{border-color:var(--red-line);background:var(--red-soft)}
+.lane.green{border-color:var(--green-line);background:var(--green-soft)}
+.lh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.num{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:800;font-size:15px;flex:none}
+.blue .num{background:var(--blue)}.amber .num{background:var(--amber)}.red .num{background:var(--red)}.green .num{background:var(--green)}
+:root[data-theme="dark"] .num{color:#0a0d13}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .num{color:#0a0d13}}
+.lh h3{font-size:18px;font-weight:800}
+.blue .lh h3{color:var(--blue)}.amber .lh h3{color:var(--amber)}.red .lh h3{color:var(--red)}.green .lh h3{color:var(--green)}
+.lh .for{color:var(--muted);font-size:12.5px;border-left:1px solid var(--border);padding-left:10px}
+.mid{display:flex;flex-direction:column;gap:10px;min-width:0}
+.trio{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:stretch}
+@media (max-width:760px){.trio{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:10px 11px;display:flex;flex-direction:column;gap:6px;min-width:0;transition:opacity .25s,box-shadow .25s}
+.card h4{margin:0;font-size:13px}
+.amber .card h4{color:var(--amber)}.red .card h4{color:var(--red)}.green .card h4{color:var(--green)}.blue .card h4{color:var(--blue)}
+.cand .row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px}
+.cand .id{font-weight:800;color:var(--blue);font-size:15px}
+.tag{font:600 11px/1.4 "JetBrains Mono",monospace;border-radius:5px;padding:1px 6px;background:var(--surface-2);border:1px solid var(--border)}
+.tag.bad{color:var(--red);background:var(--red-soft);border-color:var(--red-line)}
+.tag.ok{color:var(--green);background:var(--green-soft);border-color:var(--green-line)}
+.tag.warn{color:var(--amber);background:var(--amber-soft);border-color:var(--amber-line)}
+.big{font-size:22px;font-weight:800;letter-spacing:-.01em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.big .from{color:var(--text)}.big .to{color:var(--amber)}
+.red .big .to{color:var(--red)}
+.pre{font:12px/1.5 "JetBrains Mono",monospace;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:6px 8px;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.grid3{display:grid;grid-template-columns:repeat(4,auto);gap:4px 8px;font-size:12px;align-items:center;justify-content:start}
+.plan li{margin:4px 0}
+.plan{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.plan .pl{display:flex;gap:8px;align-items:flex-start;font-size:13px}
+.plan .pl .n{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:12px;color:#fff;flex:none}
+.res{font-size:26px;font-weight:800;color:var(--red)}
+.stepctl{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.stepctl .lbl{font-size:13px;color:var(--muted)}
+.stepctl .lbl b{color:var(--text)}
+.dim{opacity:.28}
+.hot{box-shadow:0 0 0 2.5px var(--accent)}
+.toolbar{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px}
+
+/* terminal */
+.termwrap{margin-top:14px;border-radius:12px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.18)}
+.term{background:var(--t-bg);color:var(--t-text);border:1px solid #1d2638;border-radius:12px;font:12.5px/1.6 "JetBrains Mono",ui-monospace,Menlo,monospace}
+.term .bar{display:flex;gap:8px;align-items:center;padding:7px 12px;background:var(--t-panel);border-bottom:1px solid var(--t-line);color:var(--t-dim);font-size:11.5px}
+.term .bar i{width:10px;height:10px;border-radius:50%;background:#2a3650;display:inline-block}
+.term .body{padding:10px 14px;min-height:180px;max-height:300px;overflow:auto}
+.term .ln{white-space:pre-wrap;overflow-wrap:anywhere}
+.term .ln.new{animation:fade .35s ease}
+@keyframes fade{from{opacity:0;transform:translateY(3px)}to{opacity:1}}
+.c-dim{color:var(--t-dim)}.c-ev{color:var(--t-agent)}.c-ok{color:var(--t-jev)}.c-bad{color:var(--t-bad)}.c-arch{color:var(--t-arch)}.c-y{color:var(--t-you)}.c-m{color:var(--t-main)}
+
+/* ---------- phases ---------- */
+.phases{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:1180px){.phases{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:700px){.phases{grid-template-columns:minmax(0,1fr)}}
+.pc{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.pc .hd{display:flex;align-items:center;gap:8px}
+.pc .hd .ph{min-width:28px;height:28px;font-size:14px;border-radius:8px}
+.pc h3{font-size:15px}
+.pc .sec{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.pc ul{margin:0;padding-left:18px;font-size:12.5px}
+.pc li{margin:2px 0}
+.order{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;font-size:13px;color:var(--muted)}
+
+/* ---------- out of scope ---------- */
+.oos{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+@media (max-width:980px){.oos{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 16px;min-width:0}
+.panel h3{margin-bottom:8px}
+.xl{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
+.xl li{display:grid;grid-template-columns:26px minmax(0,1fr);gap:8px;font-size:13px}
+.xl .x{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;background:var(--bad-soft);color:var(--bad);font-weight:800}
+.xl .k{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;background:var(--ok-soft);color:var(--ok);font-weight:800}
+.chart{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:6px}
+@media (max-width:560px){.chart{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.bench{display:flex;flex-direction:column;gap:6px;align-items:center;min-width:0}
+.bench .bars{height:150px;display:flex;align-items:flex-end;gap:4px;border-bottom:1px solid var(--border);width:100%;justify-content:center}
+.bar{width:22%;max-width:22px;border-radius:4px 4px 0 0;position:relative}
+.bar span{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;white-space:nowrap;margin-bottom:2px}
+.bar.s{background:#e6b422}.bar.v{background:#5b8def}.bar.h{background:#3fa868}
+.bench .nm{font-size:12px;font-weight:600}
+.note{font-size:12px;color:var(--muted);margin-top:10px;border-left:3px solid var(--need);padding-left:8px}
+.foot{margin-top:22px;font-size:12px;color:var(--muted);text-align:center}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M8 13h8M8 17h8M8 9h3"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-tools" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8-3-3 6.3-6.3"/><path d="M14.7 6.3 13 4.6a4 4 0 0 0-5.6 5.6l1.7 1.7L3 18l3 3 6.1-6.1"/></symbol>
+    <symbol id="i-merge" viewBox="0 0 24 24"><circle cx="5" cy="6" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="12" r="2.5"/><path d="M7 6c5 0 5 6 9.5 6M7 12h9.5M7 18c5 0 5-6 9.5-6"/></symbol>
+    <symbol id="i-q" viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="3" rx="1"/><rect x="3" y="10.5" width="8" height="3" rx="1"/><rect x="3" y="17" width="8" height="3" rx="1"/><circle cx="16" cy="12" r="4.5"/><path d="m19.3 15.3 2.7 2.7M15 10.6a1.2 1.2 0 1 1 1.6 1.2c-.4.2-.6.5-.6.9M16 14.2v.1"/></symbol>
+    <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+    <symbol id="i-clip" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  </defs>
+</svg>
+
+<header class="top">
+  <div class="brand">
+    <h1>Agent Desk · System Architecture</h1>
+    <span class="sub">VeriHarness × Agent Desk — “No check, no verdict”</span>
+  </div>
+  <nav class="tabs" role="tablist" aria-label="Các phần">
+    <button class="tab" role="tab" data-tab="arch" aria-selected="true">Kiến trúc</button>
+    <button class="tab" role="tab" data-tab="example" aria-selected="false">Ví dụ VeriHarness</button>
+    <button class="tab" role="tab" data-tab="phases" aria-selected="false">Các phase</button>
+    <button class="tab" role="tab" data-tab="oos" aria-selected="false">Ngoài phạm vi</button>
+  </nav>
+  <span class="sp"></span>
+  <button class="btn" id="theme" aria-label="Đổi giao diện sáng/tối"><svg class="i"><use href="#i-sun"/></svg><span>Theme</span></button>
+</header>
+
+<main class="page">
+
+<!-- ================= ARCHITECTURE ================= -->
+<section class="view on" id="v-arch" role="tabpanel">
+  <div class="archtop">
+    <div class="howto">
+      <h2>Toàn bộ hệ thống trên một sơ đồ</h2>
+      <span><b>Giữa:</b> luồng chính, đọc từ trên xuống. Bạn → Main lập plan → lớp decision → các agent làm việc → verifier kiểm bằng bằng chứng → quay về Main.</span>
+      <span><b>Trái:</b> Architect chỉ được gọi ở 3 thời điểm ◇ và không bao giờ viết code. <b>Phải:</b> các guard luôn bật cho mọi role.</span>
+      <span><b>Phần VeriHarness thêm vào:</b> verifier không tin lời agent tự báo, pool Best-of-N khi lỗi lặp lại, và Architect làm challenger ở bước cuối.</span>
+    </div>
+    <div class="ctl" aria-live="polite">
+      <div class="btns">
+        <button class="btn" id="aprev">←</button>
+        <button class="btn primary" id="aplay">▶ Chạy một session</button>
+        <button class="btn" id="anext">→</button>
+        <span class="muted" id="astep" style="font-size:12.5px"></span>
+      </div>
+      <div class="prog" id="aprog"></div>
+      <div class="cap" id="acap"></div>
+    </div>
+  </div>
+
+  <div class="tw" id="tw">
+    <div class="chrome"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span>~/invoice-app — agent-desk — 120×48</span></div>
+    <div class="ttl"><span>AGENT DESK</span><span class="fg-dim">·</span><span class="fg-main">SOL PLANS</span><span class="fg-dim">·</span><span class="fg-agent">AGENTS WORK</span><span class="fg-dim">·</span><span class="fg-ver">EVIDENCE DECIDES</span><span class="fg-dim">·</span><span class="fg-arch">ASTRA ON CALL</span></div>
+    <div class="lgd"><span class="k-main">main · high</span><span class="k-dec">decision · rules→haiku</span><span class="k-agent">agents · medium</span><span class="k-ver">verifier · evidence</span><span class="k-arch">architect · astra</span><span class="k-you">you · approvals</span></div>
+
+    <div class="tree">
+      <!-- r1 -->
+      <div class="rl L rtop"><button class="g" data-node="arch" style="text-align:center"><h4>ARCHITECT</h4><span class="sub" style="display:block">gpt-6-astra · on call</span></button></div>
+      <div class="c">
+        <button class="bx you" data-node="you" style="--w:400px"><span class="h">YOU · chat</span><span class="row">› sửa làm tròn invoice_total()</span><span class="mut">route → answer | quick | plan</span></button>
+      </div>
+      <div class="rl R rtop"><h4>GUARDS</h4><span class="sub" style="display:block">luôn bật · mọi role</span></div>
+      <!-- r2 -->
+      <div class="rl L"></div><div class="c"><span class="vc dot"></span></div><div class="rl R"></div>
+      <!-- r3 main -->
+      <div class="rl L rmid"><button class="mo" data-node="m-bp">before_plan <small>đọc plan</small></button><span class="lk"></span></div>
+      <div class="c">
+        <button class="bx main" data-node="main"><span class="h">MAIN · gpt-6.1-sol</span><span class="row">plans · triages · summarizes</span><span class="row">effort <span class="ef fg-main">▮▮▮▮</span> high</span><span class="mut">1 thread · read-only · rotate at 60% ctx</span></button>
+      </div>
+      <div class="rl R rmid"><button class="g" data-node="g-safety"><b>safety</b><span class="d">deny › secret › approve › allow</span></button></div>
+      <!-- r4 -->
+      <div class="rl L"></div><div class="c"><span class="vc dot"></span></div><div class="rl R"></div>
+      <!-- r5 decision -->
+      <div class="rl L rmid"><p>chỉ được gọi ở <span class="em">3 thời điểm</span>; đọc plan, diff và lỗi</p></div>
+      <div class="c">
+        <button class="bx dec" data-node="decision" style="--w:470px">
+          <span class="h">DECISION · fork layer</span>
+          <span class="dtab">
+            <span class="nm">route</span><span class="dbar"><i class="rule" style="width:100%"></i></span><span class="p">rule</span><span class="sharp">→ plan</span>
+            <span class="nm">tier</span><span class="dbar"><i class="rule" style="width:100%"></i></span><span class="p">rule</span><span class="sharp">→ strong</span>
+            <span class="nm">retry or stop</span><span class="dbar"><i style="width:88%"></i></span><span class="p">0.88</span><span class="sharp">sharp</span>
+            <span class="nm">dangerous</span><span class="dbar"><i class="you" style="width:100%"></i></span><span class="p">—</span><span class="split">ask you</span>
+          </span>
+          <span><span class="sharp">sharp → runs in code</span> <span class="fg-dim">·</span> <span class="split">split → Main</span></span>
+        </button>
+      </div>
+      <div class="rl R rmid"><button class="g" data-node="g-approve"><b>approvals</b><span class="d">push · migrate · deploy → hỏi bạn<br>ask | auto ⚡ · secret → gatekeeper</span></button></div>
+      <!-- r6 spawn -->
+      <div class="rl L"></div>
+      <div class="c"><span class="vc"></span><span class="vlab">spawn agents <span class="fg-dim">·</span> max_total <span class="fg-agent">6</span> <span class="fg-dim">·</span> writers <span class="fg-agent">1</span> <span class="fg-dim">·</span> retries <span class="fg-agent">2</span></span></div>
+      <div class="rl R"></div>
+      <!-- r7 agents -->
+      <div class="rl L rmid"><p>last advice:<br><span class="em">» wrong fixture,</span><br><span class="em">» not the code</span><br><br>calls <span style="float:right;color:var(--t-text)" id="a-calls">0</span><br>tokens read <span style="float:right;color:var(--t-text)" id="a-tok">0</span></p></div>
+      <div class="c">
+        <div class="fan out"><span></span><span></span><span></span><span></span></div>
+        <div class="ags">
+          <button class="bx" data-node="worker"><span class="h">worker</span><span class="fg-agent">codex · sol</span><span>effort <span class="ef fg-agent">▮▮<span class="off">▮▮</span></span> med</span><span>edits + runs checks</span><span class="ag-st" data-ag="worker">○ idle</span></button>
+          <button class="bx" data-node="explorer"><span class="h">explorer</span><span class="fg-agent">codex · luna</span><span>effort <span class="ef fg-agent">▮<span class="off">▮▮▮</span></span> low</span><span>reads the code</span><span class="ag-st" data-ag="explorer">○ idle</span></button>
+          <button class="bx" data-node="researcher"><span class="h">researcher</span><span class="fg-agent">codex · luna</span><span>effort <span class="ef fg-agent">▮<span class="off">▮▮▮</span></span> low</span><span>pulls the docs</span><span class="ag-st" data-ag="researcher">○ idle</span></button>
+          <button class="bx" data-node="deployer"><span class="h">deployer</span><span class="fg-agent">codex · sol</span><span>effort <span class="ef fg-agent">▮▮<span class="off">▮▮</span></span> med</span><span>merge · push</span><span class="ag-st" data-ag="deployer">○ idle</span></button>
+        </div>
+        <div class="fan in"><span></span><span></span><span></span><span></span></div>
+      </div>
+      <div class="rl R rmid"><button class="g" data-node="g-skills"><b>skills</b> <span class="tag2 fg-res">C</span><span class="d">builtin + .agent-desk/skills<br>mount theo glob + phase</span></button></div>
+      <!-- r8 -->
+      <div class="rl L"></div><div class="c"><span class="vc arrow"></span><span style="height:8px"></span></div><div class="rl R"></div>
+      <!-- r9 verifier -->
+      <div class="rl L rmid"><p>im lặng ở mọi turn bình thường</p></div>
+      <div class="c">
+        <button class="bx ver" data-node="verifier" style="--w:520px"><span class="h">VERIFIER · evidence, not self-report</span><span class="row">checks vs baseline at base commit</span><span class="row">only NEW failures block <span class="fg-dim">·</span> env errors always block</span><span class="mut">sha manifest · nudge ×1 · outputs · commit hooks <span class="tag2 fg-ver">D</span></span></button>
+        <div class="exits"><div class="fg-dec">✓ pass → commit</div><div class="fg-ver">✗ new failure → retry or stop ↺</div><div class="fg-cha">✗✗ same fingerprint → escalate ▼</div></div>
+      </div>
+      <div class="rl R rmid"><button class="g" data-node="g-bus"><b>event bus</b><span class="d">mọi bước → SQLite<br>TUI · show · resume</span></button></div>
+      <!-- r10 -->
+      <div class="rl L"></div><div class="c"><span class="vc dot"></span></div><div class="rl R"></div>
+      <!-- r11 pool -->
+      <div class="rl L rmid"><button class="mo" data-node="m-er">error_repeats <small>pool → replan</small></button><span class="lk"></span></div>
+      <div class="c">
+        <button class="bx pool" data-node="pool" style="--w:640px">
+          <span class="h">BEST-OF-N POOL <span class="tag2">B · opt-in</span></span>
+          <span class="pflow">
+            <span class="sb">c0 c1 c2</span><span class="ar">→</span><span class="sb ver">verify each</span><span class="ar">→</span>
+            <span class="par2"><span class="sb rsv">resolver</span><small>∥ separate ctx</small><span class="sb cha">challenger</span></span><span class="ar">→</span>
+            <span class="sb adj">adjudicate</span><span class="ar">→</span><span class="sb adj">apply</span>
+          </span>
+          <span class="mut">0 pass → replan · 1 pass → pick, no LLM · ≥2 → investigate</span>
+        </button>
+      </div>
+      <div class="rl R rmid"><button class="g" data-node="g-mem"><b>memory</b><span class="d">packet 6k tok · tail 60 lines<br>findings · followups</span></button></div>
+      <!-- r12 -->
+      <div class="rl L"></div>
+      <div class="c"><span class="vc"></span><span class="vlab">task done ✓ commit <span class="fg-dim">·</span> all tasks done</span><span class="vc arrow"></span><span style="height:8px"></span></div>
+      <div class="rl R"></div>
+      <!-- r13 final -->
+      <div class="rl L rmid rbot"><button class="mo" data-node="m-bd">before_done <small>challenge</small></button><span class="lk"></span></div>
+      <div class="c">
+        <button class="bx fin" data-node="final" style="--w:520px"><span class="h">BACK TO MAIN · challenge + gate</span><span class="row">astra: claim · tried · found · <span class="fg-cha">holds</span> <span class="tag2 fg-cha">A</span></span><span class="row">orchestrator re-runs probes HEAD vs base</span><span class="mut">completion gate → summary from verified facts</span></button>
+      </div>
+      <div class="rl R rmid rbot"><button class="g" data-node="g-quota"><b>quota</b><span class="d">hết quota = chờ, không phải lỗi</span></button></div>
+    </div>
+
+    <fieldset class="slog"><legend>session log</legend><div class="lines" id="alog"></div></fieldset>
+    <div class="prompt">
+      <div><span class="fg-dec">~/invoice-app</span> <span class="fg-dim">$</span> agent-desk <span class="fg-dim">--repo .</span> <span class="caret"></span></div>
+      <div class="sl" id="astatus"></div>
+    </div>
+  </div>
+
+  <div class="insp" id="insp" aria-live="polite"></div>
+</section>
+
+<section class="view" id="v-example" role="tabpanel">
+  <div class="intro">
+    <div>
+      <h2>Ví dụ: “Sửa làm tròn trong <code>invoice_total()</code>”</h2>
+      <p class="lead">Bố cục theo hình method của VeriHarness, đổi sang một task code. Bước 1 (c0) đã fail 2 lần với cùng fingerprint nên pool được kích hoạt. Dùng nút bên dưới hoặc phím ← → để đi qua từng bước.</p>
+    </div>
+  </div>
+  <div class="stepctl toolbar">
+    <button class="btn" id="prev">← Trước</button>
+    <button class="btn primary" id="play">▶ Phát từng bước</button>
+    <button class="btn" id="next">Sau →</button>
+    <span class="lbl" id="steplbl"></span>
+  </div>
+
+  <div class="ex">
+    <!-- 1 candidates -->
+    <div class="lane blue" data-step="1 2 3">
+      <div class="lh"><span class="num">1</span><h3>Candidates</h3></div>
+      <div class="card" data-step="1">
+        <div class="row" style="display:flex;gap:10px;align-items:flex-start"><svg class="i" style="width:34px;height:34px;color:var(--blue)"><use href="#i-doc"/></svg>
+          <div><h4>Task</h4><p style="font-size:13px">Sửa <code>invoice_total()</code>: 3 × 0.10 phải ra <b>0.30</b>; làm tròn half-up 2 chữ số.</p></div></div>
+      </div>
+      <div class="card cand" data-step="1">
+        <div class="row"><span class="id">c0</span><span class="tag">codex · gpt-6-astra</span><span class="tag bad">✗ unit</span></div>
+        <div class="row">dùng <span class="tag bad">float</span> · fail 2 lần cùng fp</div>
+        <pre class="pre">assert 0.30000000000000004 == 0.30</pre>
+      </div>
+      <div class="card cand" data-step="2">
+        <div class="row"><span class="id">c1</span><span class="tag">claude · sonnet</span><span class="tag ok">✓ unit</span></div>
+        <div class="row">dùng <span class="tag bad">float</span> · diff: <span class="tag warn">tests/test_invoice.py</span></div>
+        <pre class="pre">- assert total == 0.30
++ assert total == pytest.approx(0.30)</pre>
+      </div>
+      <div class="card cand" data-step="2">
+        <div class="row"><span class="id">c2</span><span class="tag">codex · strong</span><span class="tag ok">✓ unit</span></div>
+        <div class="row">dùng <span class="tag bad">float</span> · diff: <span class="tag ok">invoice.py</span></div>
+        <pre class="pre">+ return round(total, 2)</pre>
+      </div>
+      <div class="card" data-step="3">
+        <h4>Gom nhóm theo failure keys</h4>
+        <div class="row" style="display:flex;gap:6px;flex-wrap:wrap;font-size:12.5px"><span class="tag bad">G0 {c0} ✗</span><span class="tag ok">G1 {c1} ✓</span><span class="tag ok">G2 {c2} ✓</span></div>
+        <p class="muted" style="font-size:12px">2 nhóm pass khác nhau → cần resolver + challenger.</p>
+      </div>
+      <p class="muted" style="font-size:12px;text-align:center;border-top:1px solid var(--blue-line);padding-top:8px;margin-top:auto">Mỗi candidate một worktree riêng · xen kẽ Codex/Claude</p>
+    </div>
+
+    <!-- 2 investigations -->
+    <div class="mid">
+      <div class="lane amber" data-step="4">
+        <div class="lh"><span class="num">2a</span><h3>Disagreement Resolver</h3><span class="for">cho chỗ bất đồng</span></div>
+        <div class="trio">
+          <div class="card"><h4>c1 hay c2 đúng?</h4><p style="font-size:12.5px">c1 sửa <b>test</b>, c2 sửa <b>code</b>. Cả hai đều pass checks.</p></div>
+          <div class="card"><h4>Chạy test GỐC trên mỗi tree</h4><pre class="pre">git show base:tests/test_invoice.py
+pytest -q (c1) → 1 failed
+pytest -q (c2) → passed</pre><p class="muted" style="font-size:11.5px">Chỉ test lật pass/fail so với base mới được tính là bằng chứng.</p></div>
+          <div class="card"><h4>Evidence Record</h4><p style="font-size:12.5px">c1 pass chỉ vì nới assertion.</p><div class="big"><span class="from">c1</span>→<span class="to">c2</span></div><span class="tag">verdict: c2</span></div>
+        </div>
+      </div>
+      <div class="parlab">Hai cuộc điều tra song song · context riêng</div>
+      <div class="lane red" data-step="5">
+        <div class="lh"><span class="num">2b</span><h3>Consensus Challenger</h3><span class="for">cho chỗ đồng thuận</span></div>
+        <div class="trio">
+          <div class="card"><h4>Dùng float có đúng?</h4><div style="display:flex;gap:5px;flex-wrap:wrap"><span class="tag bad">float</span><span class="tag bad">float</span><span class="tag bad">float</span></div><p class="muted" style="font-size:12px">Cả 3 candidate đều dùng float</p></div>
+          <div class="card"><h4>Probe (orchestrator tự chạy)</h4><pre class="pre">python -c "from invoice import invoice_total as t
+assert t([0.145]) == 0.15"</pre><div class="grid3"><span>c0</span><span class="tag bad">✗</span><span>c1</span><span class="tag bad">✗</span><span>c2</span><span class="tag bad">✗</span><span>base</span><span class="tag bad">✗</span></div></div>
+          <div class="card"><h4>Evidence Record</h4><p style="font-size:12.5px"><code>holds:false</code> · found: <code>0.14 != 0.15</code></p><div class="big"><span class="from">float</span>→<span class="to">Decimal</span></div><span class="tag">lỗi chung, nằm trong phạm vi task</span></div>
+        </div>
+      </div>
+      <div class="toolbar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap" data-step="4 5">
+        <span style="display:flex;gap:8px"><svg class="i" style="width:22px;height:22px"><use href="#i-gear"/></svg><svg class="i" style="width:22px;height:22px"><use href="#i-search"/></svg><svg class="i" style="width:22px;height:22px"><use href="#i-tools"/></svg></span>
+        <span><b>Tools dùng chung & verification skills</b><br><span class="muted" style="font-size:12.5px">evidence-python-tests · falsify-recompute · resolve-disagreement (mount theo glob <code>**/*.py</code>)</span></span>
+      </div>
+    </div>
+
+    <!-- 3 adjudicate -->
+    <div class="lane green" data-step="6 7 8">
+      <div class="lh"><span class="num">3</span><h3>Adjudicate</h3></div>
+      <div class="card" data-step="6" style="flex-direction:row;align-items:center;gap:10px"><svg class="i" style="width:34px;height:34px;color:var(--green)"><use href="#i-chip"/></svg><div><h4>Context mới</h4><p style="font-size:12.5px">Đọc cả 2 ledger, re-check những entry mà nó dựa vào</p></div></div>
+      <div class="card" data-step="6">
+        <h4>Revision Plan</h4>
+        <ul class="plan">
+          <li class="pl"><span class="n" style="background:var(--amber)">a</span><span>Base = <b>c2</b> (sửa code, test gốc pass)</span></li>
+          <li class="pl"><span class="n" style="background:var(--red)">b</span><span>Chuyển float sang <code>Decimal</code> ROUND_HALF_UP. Không candidate nào có sẵn → trả về worker như một retry kèm ledger</span></li>
+        </ul>
+      </div>
+      <div class="card" data-step="7 8">
+        <h4>Kết quả</h4>
+        <p style="font-size:12.5px"><code>invoice_total([0.145])</code></p>
+        <div class="res">0.15</div>
+        <p style="font-size:12px">base <span class="tag ok">c2</span> + retry <span class="tag ok">Decimal</span> → commit <span class="tag">a1b2c3d</span></p>
+        <div class="card" style="flex-direction:row;align-items:center;gap:8px;padding:7px 9px" data-step="8"><svg class="i" style="color:var(--green)"><use href="#i-clip"/></svg><span style="font-size:12.5px">Verification record: unit ✓ · probe ✓ · before_done ✓</span></div>
+      </div>
+      <p class="muted" style="font-size:12px;text-align:center;border-top:1px solid var(--green-line);padding-top:8px;margin-top:auto">Chọn · Ghép file · Trả về worker</p>
+    </div>
+  </div>
+
+  <div class="termwrap">
+    <div class="term">
+      <div class="bar"><i></i><i></i><i></i><span>event log · agent-desk show &lt;sid&gt;</span></div>
+      <div class="body" id="term"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PHASES ================= -->
+<section class="view" id="v-phases" role="tabpanel">
+  <div class="intro"><div><h2>Bốn phase, ship độc lập</h2><p class="lead">Mỗi phase có test riêng. Tính năng tốn quota mặc định tắt vì Codex và Claude chạy bằng subscription. Cấu hình nào chỉ nới lỏng safety đều phải opt-in.</p></div></div>
+  <div class="order"><span class="ph D">D</span> vá lỗ hổng → <span class="ph A">A</span> challenger có bằng chứng → <span class="ph C">C</span> skills → <span class="ph B">B</span> Best-of-N</div>
+  <div class="phases" id="phases"></div>
+</section>
+
+<!-- ================= OUT OF SCOPE ================= -->
+<section class="view" id="v-oos" role="tabpanel">
+  <div class="intro"><div><h2>Mang sang gì, bỏ lại gì</h2><p class="lead">VeriHarness được thiết kế cho chấm điểm offline với pool khoảng 10 rollout. Agent Desk chạy online trên quota subscription, nên chỉ lấy phần tư tưởng.</p></div></div>
+  <div class="oos">
+    <div class="panel">
+      <h3>Không mang sang</h3>
+      <ul class="xl">
+        <li><span class="x">×</span><span><b>Pool N≈10.</b> Quota subscription không gánh nổi → tối đa 2 candidate thêm, dùng lại c0, chỉ khi <code>error_repeats</code>.</span></li>
+        <li><span class="x">×</span><span><b>Adjudicator sửa tự do.</b> Reviewer chỉ có quyền đọc → <code>work</code> chỉ ghép nguyên file; sửa tự do thì trả về worker kèm ledger.</span></li>
+        <li><span class="x">×</span><span><b>own_record và file ledger.</b> Structured output đã gắn ledger với run; D2 dùng nudge thay cho phần còn lại.</span></li>
+        <li><span class="x">×</span><span><b>Skills xlsx/docx/pdf và scripts.</b> Chỉ lấy ý tưởng chung (delivery contract, recompute); <code>scripts/</code> không chạy ở v1.</span></li>
+        <li><span class="x">×</span><span><b>Đa dạng nhờ temperature.</b> CLI không cho chỉnh → đa dạng nhờ trộn provider/tier và gợi ý “independent approach”.</span></li>
+      </ul>
+      <h3 style="margin-top:16px">Mang sang</h3>
+      <ul class="xl">
+        <li><span class="k">✓</span><span>Tách resolver và challenger, chạy trong context riêng; adjudicator chạy trong context mới.</span></li>
+        <li><span class="k">✓</span><span>“No check, no verdict”: <code>holds:false</code> phải có lệnh tái hiện được và output tương ứng.</span></li>
+        <li><span class="k">✓</span><span>Driver content-blind: sha manifest, một lần nudge, revert edit nào fail re-check.</span></li>
+        <li><span class="k">✓</span><span>Skills mount theo <code>applies-to</code> và <code>phase</code>.</span></li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Kết quả trong paper (tham khảo)</h3>
+      <div class="legend" style="margin-bottom:22px">
+        <span class="lg"><span class="sw" style="background:#e6b422;border-color:#e6b422"></span>Single rollout</span>
+        <span class="lg"><span class="sw" style="background:#5b8def;border-color:#5b8def"></span>LLM-as-a-Verifier</span>
+        <span class="lg"><span class="sw" style="background:#3fa868;border-color:#3fa868"></span>VeriHarness</span>
+      </div>
+      <div class="chart" id="chart"></div>
+      <p class="note">Số của paper (Gemini 3.5 Flash, ảnh <code>docs/results.png</code>), trên benchmark office/agentic, không phải coding repo. Cần đo lại trên Agent Desk bằng bảng <code>decisions</code> và các event <code>rollout.*</code>/<code>challenge.*</code> trước khi bật mặc định.</p>
+      <p class="note">Ablation trong paper: tách resolver và challenger được khoảng +0.8 so với gộp. Lợi ích tập trung ở pool bất đồng: +6.1 so với +0.6 ở pool đồng thuận (APEX).</p>
+    </div>
+  </div>
+</section>
+
+<p class="foot">Prototype · không phải code chạy thật. Kế hoạch triển khai: D → A → C → B.</p>
+</main>
+
+<script>
+(() => {
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const store = {
+  get(k){ try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v){ try { localStorage.setItem(k, v); } catch {} }
+};
+
+/* ---------- theme ---------- */
+const root = document.documentElement;
+const savedTheme = store.get("vh-theme");
+if (savedTheme) root.dataset.theme = savedTheme;
+$("#theme").addEventListener("click", () => {
+  const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  root.dataset.theme = dark ? "light" : "dark";
+  store.set("vh-theme", root.dataset.theme);
+});
+
+/* ---------- tabs ---------- */
+function showTab(name){
+  if (!$("#v-" + name)) name = "arch";
+  $$(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.tab === name)));
+  $$(".view").forEach(v => v.classList.toggle("on", v.id === "v-" + name));
+  store.set("vh-tab", name);
+}
+$$(".tab").forEach(t => t.addEventListener("click", () => showTab(t.dataset.tab)));
+showTab(store.get("vh-tab") || "arch");
+
+function esc(s){ return String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+function costBar(n){ return '<span class="cost" title="chi phí quota">' + [0,1,2,3,4].map(i => `<i class="${i < n ? "on" : ""}"></i>`).join("") + "</span>"; }
+const COST = ["không tốn LLM", "rất thấp", "1 run", "vài run", "N run worker"];
+
+/* ---------- inspector ---------- */
+const COL = { main: "#5fd3d3", dec: "#7ee08a", agent: "#7aa2f7", ver: "#ffb86b", arch: "#c3a6ff", you: "#f0c25a", guard: "#93a1b8", res: "#f3c55a" };
+const NODES = {
+  you: { c: "you", t: "You · chat", st: "existing", what: "Bạn gõ yêu cầu vào composer. Main (hoặc rule) quyết định trả lời luôn, làm quick task (1 task tự khoá), hay lập plan đầy đủ.",
+    io: "message → answer | quick | plan", ev: ["chat.*", "decision.made"], cfg: "chat.route · chat.triage · chat.quick_enabled", code: "Session.route() · graph.run_turn", cost: 1 },
+  main: { c: "main", t: "Main · gpt-6.1-sol", st: "existing", what: "Bộ não của session, một thread duy nhất với schema MainTurn: lập plan, triage finding của Architect, chọn khi decision không đủ chắc, viết summary. Main không sửa code.",
+    io: "brief + memory → Plan · Triage · Summary", ev: ["plan.*", "studio.*", "final.summary"], cfg: "roles.main · context.main_rotate_at", code: "reasoner.Reasoner · studio.py", cost: 2 },
+  decision: { c: "dec", t: "Decision · fork layer", st: "changed", ph: "D", what: "Mỗi điểm quyết định đi theo thứ tự: rules → engine rẻ (Haiku, hoặc Jev khi có key) → Main. Kết quả sharp (xác suất ≥ 0.8) thì code tự chạy; split thì hỏi Main; dangerous thì hỏi bạn. Phase D: retry_or_stop trả replan/architect sẽ thật sự buộc escalate.",
+    io: "point + state → choice, confidence", ev: ["decision.made (bảng decisions = dataset)"], cfg: "decision.points.* · sharp_threshold", code: "decision/engine.py · rules.py · engines.py", cost: 1,
+    vh: "VeriHarness: không bỏ phiếu. Decision chỉ chọn hướng đi; đúng/sai do verifier quyết." },
+  worker: { c: "agent", t: "worker", st: "existing", what: "Agent duy nhất được ghi (max_writers 1), làm việc trong session worktree. Tier fast/strong do decision chọn. Lần retry nhận lại previous attempt + failure tail.",
+    io: "ContextPacket → AgentReport", ev: ["agent.*", "live.*", "task.*"], cfg: "roles.worker · limits", code: "Session._run_task", cost: 2 },
+  explorer: { c: "agent", t: "explorer", st: "existing", what: "Đọc code chỉ với quyền read và trả về các file quan trọng (path:lines) để lưu vào memory.",
+    io: "task → evidence[file]", ev: ["agent.*"], cfg: "roles.explorer", code: "_run_task (requires_write=false)", cost: 1 },
+  researcher: { c: "agent", t: "researcher", st: "existing", what: "Có network, đọc docs/thư viện bên ngoài. Chỉ có quyền read.",
+    io: "question → notes", ev: ["agent.*"], cfg: "roles.researcher (network: true)", code: "_run_task", cost: 1 },
+  deployer: { c: "agent", t: "deployer", st: "existing", what: "Merge, push, deploy bằng tooling của repo. Mọi push đều hỏi bạn; force-push luôn bị chặn.",
+    io: "deploy steps → evidence[command]", ev: ["approval.*"], cfg: "roles.deployer", code: "_run_task (kind=deployment)", cost: 2 },
+  verifier: { c: "ver", t: "Verifier · evidence", st: "changed", ph: "D", what: "Không tin AgentReport. Chạy các check đã cấu hình, so failure key với baseline ở base commit: chỉ failure MỚI mới chặn, lỗi môi trường luôn chặn. Phase D thêm: verify cả khi report hỏng, nudge đúng 1 lần, ghi file đổi bằng sha256, attempt không đổi cây → escalate sớm.",
+    io: "worktree → CheckResult[] (pass | regression | pre-existing | environment)", ev: ["verification.result", "task.changes", "task.nudged"], cfg: "verification.<name>{command, paths, writes}", code: "verifier.py · baseline.py · gitws.manifest", cost: 0,
+    vh: "VeriHarness: driver content-blind — chỉ di chuyển file và đo, không đọc nội dung để phán." },
+  pool: { c: "agent", t: "Best-of-N pool", st: "optin", ph: "B", what: "Chỉ khi lỗi lặp (error_repeats) và bạn bật review.rollouts. c0 = attempt đã fail; c1..c2 chạy worktree riêng, xen kẽ Codex/Claude. Verify từng tree, gom nhóm theo failure key. 0 nhóm pass → replan; 1 nhóm → chọn luôn; ≥2 → resolver ∥ challenger (context riêng) → adjudicator (context mới) → apply + re-check.",
+    io: "failing task → applied tree | ledger cho replan", ev: ["rollout.started", "rollout.grouped", "rollout.ledger", "rollout.adjudicated", "rollout.applied"], cfg: "review.rollouts: 0 · review.rollout.targets/parallel", code: "rollouts.py (mới)", cost: 4,
+    vh: "VeriHarness: chỗ bất đồng → resolve bằng check; chỗ đồng thuận → challenge, vì đồng thuận không phải bằng chứng." },
+  final: { c: "main", t: "Back to Main · challenge + gate", st: "new", ph: "A", what: "Architect trả ChallengeReview: mỗi nghi vấn có claim, lệnh tried, output found, holds. Architect chỉ có quyền đọc nên orchestrator tự chạy lại lệnh ở HEAD và base. Critical chỉ chặn khi tái hiện được (mode require). Sau đó completion gate, rồi Main viết summary.",
+    io: "diff + verification → ChallengeReview → unmet[] → COMPLETED", ev: ["architect.reviewed{ledger}", "challenge.probe", "completion.gate"], cfg: "review.evidence.mode: off | record | require", code: "Session._final_review · _probe · completion_gate", cost: 2,
+    vh: "VeriHarness: “holds:false phải chỉ ra mâu thuẫn” — không có check thì không có verdict." },
+  arch: { c: "arch", t: "Architect · gpt-6-astra", st: "existing", what: "Reviewer độc lập, chỉ có quyền đọc, không bao giờ viết code: Main áp dụng review. Chỉ được gọi ở 3 thời điểm cố định, im lặng ở mọi turn khác. Có fallback role khi hết quota.",
+    io: "plan / diff / failures → review", ev: ["architect.reviewed", "architect.triaged"], cfg: "roles.architect · review.triggers · max_rounds", code: "architect.py", cost: 2 },
+  "m-bp": { c: "arch", t: "◇ before_plan", st: "existing", what: "Trước khi viết dòng code nào: đọc plan, tìm code path bị sót, giả định sai, thiếu acceptance criteria. Main triage từng finding (fixed / rejected / question).",
+    io: "Plan → ArchitectReview", ev: ["architect.reviewed", "architect.triaged"], cfg: "review.triggers ∋ before_plan", code: "Session._review_plan · studio.integrate_review", cost: 2 },
+  "m-er": { c: "arch", t: "◇ error_repeats", st: "changed", ph: "B", what: "Cùng một lỗi lặp 2 lần. Nếu bật pool thì thử Best-of-N trước; không nhóm nào pass thì Architect chẩn đoán (code / test / plan / môi trường sai?) kèm ledger của resolver, rồi Main revise plan và task được reset budget.",
+    io: "diff + failures (+ ledger) → advice → new Plan", ev: ["task.replanned"], cfg: "review.max_replans_per_task", code: "Session._escalate", cost: 3 },
+  "m-bd": { c: "arch", t: "◇ before_done", st: "changed", ph: "A", what: "Review cuối, theo kiểu challenger: thử đánh đổ kết quả theo thứ tự delivery contract → tính lại giá trị chịu lực → cách hiểu spec → thứ bị bỏ sót.",
+    io: "diff → ChallengeReview", ev: ["challenge.probe", "challenge.demoted"], cfg: "review.evidence.*", code: "architect.build_prompt", cost: 2 },
+  "g-safety": { c: "guard", t: "Safety", st: "existing", what: "Mỗi lệnh được phân loại: deny (rm -rf /, force-push, curl|sh) › secret (.env, printenv) › approve (ngoài worktree, push, migrate) › allow (đọc, test, lint). Config chỉ được siết thêm, không được nới.",
+    io: "command → deny | secret | approve | allow", ev: ["approval.classified"], cfg: "approval.require_for", code: "safety.py · classify / classify_path", cost: 0 },
+  "g-approve": { c: "guard", t: "Approvals", st: "existing", what: "Mode ask/auto ⚡ (Shift+Tab). Auto chỉ cho qua các lệnh phá huỷ cục bộ trong worktree; push/deploy luôn hỏi bạn. Đọc secret → gatekeeper (Haiku) hoặc hỏi bạn.",
+    io: "Approval → yes/no", ev: ["approval.resolved", "approval.mode"], cfg: "approval.env_gate", code: "Session.approval_handler · gatekeeper.py", cost: 1 },
+  "g-skills": { c: "res", t: "Verification skills", st: "new", ph: "C", what: "SKILL.md có applies-to (glob) và phase (challenge | resolve | adjudicate | repair). Nguồn: builtin trong package và .agent-desk/skills của repo (repo override builtin). Được paste vào prompt theo file đã đổi, giới hạn max_chars.",
+    io: "changed files + phase → prompt section", ev: ["skills.mounted"], cfg: "skills.sources/mode/phases/max_chars", code: "skills.py · plugins KIND skill", cost: 1 },
+  "g-bus": { c: "guard", t: "Event bus", st: "existing", what: "Mọi bước là một event được lưu vào SQLite trước rồi mới publish. TUI dựng lại state từ event; agent-desk show/resume dùng chính log này.",
+    io: "Event → store → subscribers", ev: ["*"], cfg: "—", code: "events/bus.py · store.py · tui/projection.py", cost: 0 },
+  "g-mem": { c: "guard", t: "Memory & context", st: "existing", what: "Packet tối đa 6k token: không bao giờ bỏ failure, task, decisions. Memory L2 lưu file refs, findings, followups giữa các task.",
+    io: "memory → ContextPacket", ev: ["memory.*"], cfg: "context.packet_max_tokens · failure_tail_lines", code: "context/builder.py · memory.py", cost: 0 },
+  "g-quota": { c: "guard", t: "Quota", st: "existing", what: "Hết quota subscription là một trạng thái chờ, không tính là fail và không đốt retry. Session resume khi reset.",
+    io: "quota.hit → WAITING_QUOTA → resume", ev: ["quota.hit"], cfg: "quota.on_limit: wait", code: "Session.resume_after_quota", cost: 0 },
+};
+const STL = { existing: ["st", "existing"], changed: ["st changed", "changed"], new: ["st new", "new"], optin: ["st optin", "opt-in"] };
+function inspect(id){
+  const n = NODES[id]; if (!n) return;
+  $$("#tw [data-node]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.node === id)));
+  const [cls, lab] = STL[n.st];
+  $("#insp").innerHTML = `
+    <div class="hd"><span class="sw2" style="background:${COL[n.c]}"></span>${n.ph ? `<span class="ph ${n.ph}">${n.ph}</span>` : ""}<h3>${esc(n.t)}</h3><span class="${cls}">${lab}</span><span class="muted" style="font-size:12px;margin-left:auto">bấm khối khác trong sơ đồ để xem</span></div>
+    <div><p class="what">${esc(n.what)}</p>${n.vh ? `<p class="vh">${esc(n.vh)}</p>` : ""}</div>
+    <dl class="kv">
+      <dt>I/O</dt><dd><code>${esc(n.io)}</code></dd>
+      <dt>Events</dt><dd>${n.ev.map(e => `<span class="chip mono">${esc(e)}</span>`).join(" ")}</dd>
+      <dt>Config</dt><dd><code>${esc(n.cfg)}</code></dd>
+      <dt>Code</dt><dd><code>${esc(n.code)}</code></dd>
+      <dt>Quota</dt><dd>${costBar(n.cost)} <span class="muted" style="font-size:12px">${COST[n.cost]}</span></dd>
+    </dl>`;
+}
+$$("#tw [data-node]").forEach(b => b.addEventListener("click", () => inspect(b.dataset.node)));
+inspect("verifier");
+
+/* ---------- architecture session playback ---------- */
+const WHO = { you: "fg-you", rules: "fg-dec", haiku: "fg-dec", main: "fg-main", astra: "fg-arch", explorer: "fg-agent", worker: "fg-agent",
+  pool: "fg-agent", verifier: "fg-ver", policy: "fg-guard", skills: "fg-res", resolver: "fg-res", challenger: "fg-cha", adjud: "fg-adj", gate: "fg-main" };
+const ASTEPS = [
+  { cap: ["Toàn cảnh", "Đọc từ trên xuống. Bấm ▶ để xem một session thật đi qua hệ thống: một bug làm tròn tiền, lỗi lặp lại, pool VeriHarness giải quyết."],
+    hl: [], log: [], ag: {}, agents: 0, astra: "on call", calls: 0, tok: "0" },
+  { cap: ["1 · Bạn gửi yêu cầu", "Rule route thấy yêu cầu đụng tới code và test nên chọn lập plan đầy đủ, không cần hỏi LLM."],
+    hl: ["you", "decision"], log: [["you", "sửa làm tròn invoice_total(): 3×0.10 phải ra 0.30", ""], ["rules", "route → plan", "rule → code"]] },
+  { cap: ["2 · Main lập plan", "Main (một thread, effort high) viết plan gồm 2 task. Main không sửa code."],
+    hl: ["main"], log: [["main", "plan v1 · T1 explore invoice · T2 fix rounding + tests", ""]] },
+  { cap: ["3 · Architect, thời điểm 1: before_plan", "Architect đọc plan trước khi có dòng code nào và chỉ ra thiếu test half-up (0.145 → 0.15). Main sửa plan rồi khoá bằng hash."],
+    hl: ["m-bp", "main", "arch"], astra: "reviewing", calls: 1, tok: "86k",
+    log: [["astra", "before_plan · 1 finding: missing half-up test", ""], ["main", "triage → fixed · plan locked #a41f", ""]] },
+  { cap: ["4 · Spawn agents", "Scheduler chạy explorer (đọc code) và worker (tier strong do rule chọn). Lệnh pytest được safety phân loại allow nên không phải hỏi bạn."],
+    hl: ["decision", "explorer", "worker", "g-safety"], ag: { explorer: ["ok", "✓ done"], worker: ["run", "◔ running"] }, agents: 2, astra: "on call",
+    log: [["rules", "tier T2 → strong", "rule → code"], ["explorer", "read invoice.py:12-40, tests/test_invoice.py", ""], ["policy", "pytest -q → allow", ""]] },
+  { cap: ["5 · Verifier không tin lời tự báo", "Worker báo “completed”. Verifier vẫn chạy checks và so với baseline: có 1 failure MỚI nên chưa được commit. 3 failure có sẵn từ trước bị bỏ qua."],
+    hl: ["worker", "verifier"], ag: { worker: ["bad", "✗ 1 new failure"] }, agents: 1,
+    log: [["worker", "1 file edited · report: completed", ""], ["verifier", "unit · NEW test_half_up · 3 pre-existing ignored", "regression"]] },
+  { cap: ["6 · Decision: retry or stop", "Haiku trả p=0.88 ≥ 0.8 nên kết quả là sharp, code tự retry mà không làm phiền Main. Worker nhận lại failure tail."],
+    hl: ["decision", "worker"], ag: { worker: ["run", "◔ attempt 2"] },
+    log: [["haiku", "retry or stop → retry once", "p=0.88 sharp → code"], ["worker", "attempt 2 · packet + failure tail", ""]] },
+  { cap: ["7 · Lỗi lặp → escalate", "Lần 2 fail với cùng fingerprint. Pool Best-of-N (đã bật) chạy thêm c1 (Claude) và c2 (Codex strong) trên worktree riêng; c0 là attempt cũ."],
+    hl: ["verifier", "m-er", "pool"], ag: { worker: ["bad", "✗ same failure"] }, agents: 3,
+    log: [["verifier", "same fingerprint ×2 → escalate", ""], ["pool", "rollout.started c1 claude·sonnet · c2 codex·strong", "opt-in"]] },
+  { cap: ["8 · Resolver ∥ Challenger", "2 nhóm pass khác nhau. Resolver xử lý chỗ bất đồng; Challenger thử đánh đổ chỗ cả 3 đồng thuận (dùng float). Hai bên chạy context riêng và chỉ tin lệnh chạy được."],
+    hl: ["pool", "g-skills"], astra: "investigating", calls: 3, tok: "224k",
+    log: [["pool", "grouped G1{c1}✓ G2{c2}✓", ""], ["skills", "mounted evidence-python-tests, falsify-recompute", ""],
+          ["resolver", "c1 chỉ pass vì nới test → verdict c2", "base test"], ["challenger", "float ở cả 3 · probe 0.145 → 0.14", "holds:false ✓"]] },
+  { cap: ["9 · Adjudicate rồi apply", "Adjudicator (context mới) chọn base c2 và yêu cầu dùng Decimal. Worker sửa tiếp kèm ledger; verifier thấy 0 failure mới nên commit."],
+    hl: ["pool", "worker", "verifier"], ag: { worker: ["ok", "✓ tests pass"] }, agents: 1, astra: "on call",
+    log: [["adjud", "base=c2 · work: Decimal ROUND_HALF_UP", "fresh ctx"], ["worker", "attempt 3 · 1 file edited", ""], ["verifier", "unit pass · 0 new · commit 7c21e0", "✓"]] },
+  { cap: ["10 · Architect, thời điểm 3: before_done", "Architect làm challenger; orchestrator tự chạy lại từng probe ở HEAD và base. Không nghi vấn nào đứng vững → completion gate → Main viết summary chỉ từ facts đã kiểm chứng."],
+    hl: ["final", "m-bd", "main"], agents: 0, astra: "on call", calls: 4, tok: "301k",
+    log: [["astra", "before_done · 2 claims · 0 holds:false → approve", "probes re-run"], ["gate", "completion gate · unmet=[] → COMPLETED", ""], ["main", "summary from verified facts", ""]] },
+];
+let astep = 0, atimer = null;
+$("#aprog").innerHTML = ASTEPS.slice(1).map(() => "<i></i>").join("");
+function stateAt(k){
+  const s = { ag: { worker: ["", "○ idle"], explorer: ["", "○ idle"], researcher: ["", "○ idle"], deployer: ["", "○ idle"] }, agents: 0, astra: "on call", calls: 0, tok: "0" };
+  for (let i = 0; i <= k; i++) {
+    const x = ASTEPS[i];
+    Object.assign(s.ag, x.ag || {});
+    for (const f of ["agents", "astra", "calls", "tok"]) if (x[f] !== undefined) s[f] = x[f];
+  }
+  return s;
+}
+function renderArch(){
+  const last = ASTEPS.length - 1, x = ASTEPS[astep], s = stateAt(astep);
+  $("#tw").classList.toggle("playing", astep > 0);
+  $$("#tw [data-node]").forEach(b => b.classList.toggle("hl", x.hl.includes(b.dataset.node)));
+  $$("#aprog i").forEach((i, k) => i.classList.toggle("on", k < astep));
+  $("#acap").innerHTML = `<b>${esc(x.cap[0])}</b>${esc(x.cap[1])}`;
+  $("#astep").textContent = astep ? `bước ${astep}/${last}` : "";
+  for (const [k, [c, t]] of Object.entries(s.ag)) { const e = $(`[data-ag="${k}"]`); e.className = "ag-st " + c; e.textContent = t; }
+  $("#a-calls").textContent = s.calls; $("#a-tok").textContent = s.tok;
+  const log = $("#alog"); log.innerHTML = "";
+  let sec = 0;
+  const lines = ASTEPS.slice(1, astep + 1).flatMap((st, i) => st.log.map(l => [l, i + 1 === astep]));
+  if (!lines.length) log.innerHTML = '<div class="ll"><span class="t">--:--:--</span><span class="w fg-dim">—</span><span class="x fg-dim">chưa có event · bấm ▶ Chạy một session</span><span></span></div>';
+  lines.forEach(([[who, txt, meta], fresh]) => {
+    sec += 2;
+    const d = document.createElement("div");
+    d.className = "ll" + (fresh ? " new" : "");
+    d.innerHTML = `<span class="t">23:48:${String(sec).padStart(2, "0")}</span><span class="w ${WHO[who] || ""}">${esc(who)}</span><span class="x">${esc(txt)}</span><span class="m">${esc(meta)}</span>`;
+    log.appendChild(d);
+  });
+  log.scrollTop = log.scrollHeight;
+  const w = s.ag.worker[0] === "run" ? 1 : 0;
+  $("#astatus").innerHTML = [["main", "sol·high"], ["agents", `${s.agents}/6`], ["writers", `${w}/1`], ["astra", s.astra], ["decision", "haiku ≥0.8"],
+    ["evidence", "record"], ["rollouts", "2 · opt-in"], ["mode", "ask"]].map(([k, v]) => `<span>${k} [<b>${esc(v)}</b>]</span>`).join("");
+  $("#aprev").disabled = astep === 0;
+  $("#anext").disabled = astep === last;
+}
+function ago(d){ astep = Math.max(0, Math.min(ASTEPS.length - 1, astep + d)); renderArch(); }
+function astop(){ clearInterval(atimer); atimer = null; $("#aplay").textContent = "▶ Chạy một session"; }
+$("#aprev").addEventListener("click", () => { astop(); ago(-1); });
+$("#anext").addEventListener("click", () => { astop(); ago(1); });
+$("#aplay").addEventListener("click", () => {
+  if (atimer) return astop();
+  if (astep === ASTEPS.length - 1) astep = 0;
+  $("#aplay").textContent = "❚❚ Dừng";
+  ago(1);
+  atimer = setInterval(() => { if (astep >= ASTEPS.length - 1) return astop(); ago(1); }, 3200);
+});
+document.addEventListener("keydown", e => {
+  if (!$("#v-arch").classList.contains("on")) return;
+  if (e.key === "ArrowRight") { astop(); ago(1); }
+  if (e.key === "ArrowLeft") { astop(); ago(-1); }
+});
+renderArch();
+
+/* ---------- example stepper ---------- */
+const STEPS = [
+  { lbl: "Toàn cảnh", ev: [] },
+  { lbl: "c0 fail lặp lại → mở pool", ev: [
+    ["c-ev", "task.retry      ", "T1 a1 fp=unit#3f2a  assert 0.30000000000000004 == 0.30"],
+    ["c-ev", "task.escalate   ", "T1 a2 same fingerprint twice"],
+    ["c-m",  "rollout.started ", "T1 n=2 targets=[claude·sonnet, codex·strong] parallel=1"]]},
+  { lbl: "c1, c2 chạy trên worktree riêng", ev: [
+    ["c-ev", "rollout.candidate", "c0 ✗ unit  tree=9e1c  files=[invoice.py]"],
+    ["c-ev", "rollout.candidate", "c1 ✓ unit  tree=47ab  files=[tests/test_invoice.py]"],
+    ["c-ev", "rollout.candidate", "c2 ✓ unit  tree=d802  files=[invoice.py]"]]},
+  { lbl: "Verify mọi tree, gom nhóm", ev: [
+    ["c-m",  "rollout.grouped ", "G0{c0}✗ G1{c1}✓ G2{c2}✓ → 2 passing groups → investigate"],
+    ["c-dim","skills.mounted  ", "resolve: evidence-python-tests, resolve-disagreement (3.1k chars)"]]},
+  { lbl: "2a Resolver: c1 hay c2?", ev: [
+    ["c-arch","rollout.ledger  ", "resolve  q=\"fix in code or in test?\" checked=\"base test on each tree\""],
+    ["c-arch","                ", "         found=\"c1: 1 failed · c2: passed\" verdict=c2"]]},
+  { lbl: "2b Challenger: float có đúng?", ev: [
+    ["c-arch","rollout.ledger  ", "challenge claim=\"money in float is fine\" holds=false"],
+    ["c-y",   "approval.classified", "python -c … → allow (test-like, inside tree)"],
+    ["c-bad", "challenge.probe ", "p1 head=fail(c0,c1,c2) base=fail found=\"0.14 != 0.15\" confirmed=shared defect"]]},
+  { lbl: "3 Adjudicate trong context mới", ev: [
+    ["c-ok",  "rollout.adjudicated", "base=c2 work=[] open=[] notes=\"Decimal ROUND_HALF_UP → retry with ledger\""]]},
+  { lbl: "Apply c2 → retry kèm ledger", ev: [
+    ["c-ok",  "rollout.applied ", "base=c2 applied=[invoice.py] reverted=[]"],
+    ["c-ev",  "task.retry      ", "T1 a3 packet += ledger (holds:false float→Decimal)"],
+    ["c-ev",  "verification.result", "unit pass · new tests 2"]]},
+  { lbl: "Commit · before_done · xong", ev: [
+    ["c-ok",  "task.done       ", "T1 commit=a1b2c3d"],
+    ["c-arch","architect.reviewed", "before_done verdict=approve ledger=[p1 holds:true]"],
+    ["c-ok",  "rollout.finished", "outcome=applied"],
+    ["c-ok",  "completion.gate ", "unmet=[] → COMPLETED"]]},
+];
+let step = 0, timer = null;
+function renderStep(){
+  const last = STEPS.length - 1;
+  $("#steplbl").innerHTML = step ? `Bước <b>${step}/${last}</b> · ${STEPS[step].lbl}` : `<b>${STEPS[0].lbl}</b> · bấm ▶ hoặc → để bắt đầu`;
+  $$("#v-example [data-step]").forEach(el => {
+    const on = el.dataset.step.split(" ").map(Number);
+    el.classList.toggle("dim", step > 0 && !on.some(s => s <= step));
+    el.classList.toggle("hot", step > 0 && on.includes(step) && el.classList.contains("card"));
+  });
+  const t = $("#term");
+  t.innerHTML = "";
+  const lines = step ? STEPS.slice(1, step + 1).flatMap((s, i) => s.ev.map(e => [...e, i + 1 === step])) : [];
+  if (!lines.length) t.innerHTML = '<div class="ln c-dim">$ agent-desk show 7f3a  # chưa có event · bắt đầu ở bước 1</div>';
+  lines.forEach(([c, ty, msg, fresh]) => {
+    const d = document.createElement("div");
+    d.className = "ln" + (fresh ? " new" : "");
+    d.innerHTML = `<span class="c-dim">T1 </span><span class="${c}">${esc(ty)}</span> ${esc(msg)}`;
+    t.appendChild(d);
+  });
+  t.scrollTop = t.scrollHeight;
+  $("#prev").disabled = step === 0;
+  $("#next").disabled = step === last;
+}
+function go(d){ step = Math.max(0, Math.min(STEPS.length - 1, step + d)); renderStep(); }
+function stop(){ clearInterval(timer); timer = null; $("#play").textContent = "▶ Phát từng bước"; }
+$("#prev").addEventListener("click", () => { stop(); go(-1); });
+$("#next").addEventListener("click", () => { stop(); go(1); });
+$("#play").addEventListener("click", () => {
+  if (timer) return stop();
+  if (step === STEPS.length - 1) step = 0;
+  $("#play").textContent = "❚❚ Dừng";
+  go(1);
+  timer = setInterval(() => { if (step >= STEPS.length - 1) return stop(); go(1); }, 2200);
+});
+document.addEventListener("keydown", e => {
+  if (!$("#v-example").classList.contains("on") || e.target.closest("input,textarea")) return;
+  if (e.key === "ArrowRight") { stop(); go(1); }
+  if (e.key === "ArrowLeft") { stop(); go(-1); }
+});
+renderStep();
+
+/* ---------- phases ---------- */
+const PHASES = [
+  { ph: "D", t: "Vá lỗ hổng", cost: 0, goal: "Cổng kiểm tra không tin agent tự báo; engine có thể buộc escalate.",
+    items: ["retry_or_stop replan/architect → buộc escalate", "verify cả khi report hỏng; nudge 1 lần", "sha256 manifest · same-tree fingerprint", "scheduler.hold giữ writer slot"],
+    yaml: "# không thêm key mới\nscheduler:\n  max_retries_per_task: 2",
+    ev: ["task.changes", "task.nudged", "task.escalate{forced_by}"],
+    tests: "test_flow: replan ép escalate, report hỏng → verify, tree không đổi" },
+  { ph: "A", t: "Challenger có bằng chứng", cost: 2, goal: "before_done chỉ chặn bằng finding đã được tái hiện.",
+    items: ["ChallengeReview{ledger[Probe]}", "orchestrator chạy probe ở HEAD và base", "record: chỉ ghi lại · require: hạ critical chưa chứng minh", "UI: ✓ evidence / ? unverified / ≡ pre-existing"],
+    yaml: "review:\n  evidence:\n    mode: off      # record | require\n    max_probes: 5\n    probe_timeout: 120",
+    ev: ["challenge.probe", "challenge.demoted", "architect.reviewed{ledger}"],
+    tests: "test_architect: confirmed chặn, require hạ, deny → untested, revert writes" },
+  { ph: "C", t: "Verification skills", cost: 1, goal: "Tri thức kiểm chứng là plugin, được mount theo file đã đổi.",
+    items: ["plugin kind mới: skill (builtin, repo)", "SKILL.md: applies-to · phase · commands", "repo override builtin; config check validate", "F2 COMPONENTS hiện skills + nguồn"],
+    yaml: "skills:\n  sources: [builtin, repo]\n  mode: match     # off | catalogue\n  phases: [challenge, resolve, adjudicate]\n  max_chars: 8000",
+    ev: ["skills.mounted"],
+    tests: "test_skills: parse, glob, budget, override; test_plugins" },
+  { ph: "B", t: "Best-of-N khi lỗi lặp", cost: 4, goal: "Khi một hướng bế tắc, so sánh vài hướng độc lập bằng bằng chứng.",
+    items: ["c0 + tối đa 2 candidate, worktree riêng", "1 nhóm pass → chọn, 0 LLM", "≥2 nhóm → resolver ∥ challenger → adjudicator", "apply + re-check; quota → chờ, không chạy lại"],
+    yaml: "review:\n  rollouts: 0     # opt-in\n  rollout:\n    targets: []\n    parallel: 1\n    max_per_session: 1",
+    ev: ["rollout.started", "rollout.candidate", "rollout.grouped", "rollout.ledger", "rollout.adjudicated", "rollout.applied", "rollout.finished"],
+    tests: "test_rollouts: off mặc định, pick không LLM, run tách biệt, revert, quota, dọn worktree" },
+];
+$("#phases").innerHTML = PHASES.map(p => `
+  <article class="pc">
+    <div class="hd"><span class="ph ${p.ph}">${p.ph}</span><h3>${esc(p.t)}</h3></div>
+    <p style="font-size:13px">${esc(p.goal)}</p>
+    <div><span class="sec">Quota</span> ${costBar(p.cost)}</div>
+    <div><div class="sec">Thay đổi</div><ul>${p.items.map(i => `<li>${esc(i)}</li>`).join("")}</ul></div>
+    <div><div class="sec">Config (mặc định an toàn)</div><pre class="pre">${esc(p.yaml)}</pre></div>
+    <div><div class="sec">Events</div><div class="chips">${p.ev.map(e => `<span class="chip mono">${esc(e)}</span>`).join("")}</div></div>
+    <div><div class="sec">Test chính</div><p style="font-size:12.5px">${esc(p.tests)}</p></div>
+  </article>`).join("");
+
+/* ---------- paper chart ---------- */
+const BENCH = [["APEX", 48.1, 49.8, 54.8], ["WSB", 56.5, 60.4, 65.4], ["WorkBuddy", 73.2, 75.3, 78.2], ["SB-2", 27.3, 30.2, 32.2], ["JobBench", 30.9, 31.9, 36.2]];
+$("#chart").innerHTML = BENCH.map(([n, s, v, h]) => {
+  const lo = Math.min(s, v, h) - 4, hi = Math.max(s, v, h);
+  const H = x => (12 + 88 * (x - lo) / (hi - lo)).toFixed(1) + "%";
+  return `<div class="bench"><div class="bars">
+    <div class="bar s" style="height:${H(s)}"><span>${s}</span></div>
+    <div class="bar v" style="height:${H(v)}"><span>${v}</span></div>
+    <div class="bar h" style="height:${H(h)}"><span>${h}</span></div></div><span class="nm">${n}</span></div>`;
+}).join("");
+})();
+</script>
+</body>
+</html>

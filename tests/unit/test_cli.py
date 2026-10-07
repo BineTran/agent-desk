@@ -48,3 +48,22 @@ def test_init_scopes_biome_and_jest_to_changed_files(tmp_path):
     from pathlib import Path
     v = load(tmp_path, global_path=Path("/nonexistent")).config.verification
     assert v["lint"].paths and "{changed}" in v["unit"].command
+
+
+def test_headless_route_auto_prints_the_answer_without_a_worktree(tmp_path, monkeypatch):
+    import subprocess
+    from agent_desk.contracts import MAIN_FIELD
+    from agent_desk.runtime.base import RunResult
+    from agent_desk.runtime.mock import MockRuntime
+    from agent_desk.runtime import registry
+    repo = tmp_path / "r"; repo.mkdir(); (repo / "a.py").write_text("x=1\n")
+    for c in (["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "i"]):
+        subprocess.run(["git", *c], cwd=repo, check=True)
+    def script(spec):
+        out = {k: None for k in MAIN_FIELD.values()}
+        out["route"] = {"kind": "answer", "text": "x is 1", "brief": None, "task": None, "reason": "r"}
+        return RunResult("completed", json.dumps(out), "th")
+    rt = MockRuntime(script)
+    monkeypatch.setattr(registry, "RuntimeRouter", lambda cfg, reg, *a, **k: rt)
+    r = R.invoke(app, ["headless", "what is x?", "--repo", str(repo), "--home", str(tmp_path / "h"), "--route", "auto"])
+    assert r.exit_code == 0 and "x is 1" in r.output and "worktree=" not in r.output

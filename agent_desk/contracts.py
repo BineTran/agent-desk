@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-Role = Literal["main", "explorer", "worker", "researcher", "architect", "deployer", "debug"]
+Role = Literal["main", "explorer", "worker", "researcher", "architect", "deployer", "debug", "chat"]
 
 
 class M(BaseModel):
@@ -180,6 +180,16 @@ class MainReply(M):
     plan: Plan | None
 
 
+class Route(M):
+    """How Main handles one chat message. answer: `text` IS the answer (no plan, no other agent); quick: one small worker task
+    (`task`), verified like any other; plan: the full plan flow. escalate is only for the cheap `chat` triage role (Main never uses it)."""
+    kind: Literal["answer", "quick", "plan", "escalate"]
+    text: str              # answer: the full answer; quick/plan: one line on what happens next
+    brief: str | None      # quick/plan: the request restated so it stands alone without the chat
+    task: TaskSpec | None  # quick only
+    reason: str
+
+
 class TriageItem(M):
     finding_id: str
     verdict: Literal["fixed", "rejected", "question"]
@@ -202,6 +212,7 @@ class MainTurn(M):
     reply: MainReply | None
     summary: Summary | None
     pick: Pick | None
+    route: Route | None
 
 
-MAIN_FIELD = {"Questions": "questions", "Plan": "plan", "Triage": "triage", "MainReply": "reply", "Summary": "summary", "Pick": "pick"}
+MAIN_FIELD = {"Route": "route", "Questions": "questions", "Plan": "plan", "Triage": "triage", "MainReply": "reply", "Summary": "summary", "Pick": "pick"}

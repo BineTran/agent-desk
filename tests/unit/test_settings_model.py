@@ -21,7 +21,7 @@ def m(tmp_path):
 
 def test_items_cover_roles_points_providers_jev_add(m):
     kinds = [i.kind for i in m.items()]
-    assert kinds.count("role") == 7 and kinds.count("point") == 4 and kinds[-5:] == ["jev", "add", "account", "account", "add_account"]
+    assert kinds.count("role") == 8 and kinds.count("point") == 4 and kinds[-5:] == ["jev", "add", "account", "account", "add_account"]
     assert [i.key for i in m.items() if i.kind == "account"] == ["codex", "claude"]        # the implicit ones
     assert Item("provider", "antigravity") in m.items()
 

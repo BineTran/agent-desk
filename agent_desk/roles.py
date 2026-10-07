@@ -20,6 +20,8 @@ ROLE_CARDS = {
                 "Each push or deploy command is approved by the user before it runs; never force-push, never rewrite history. "
                 "Stop and report on a rejected push, a merge conflict you were not told how to resolve, or a failing deploy step. "
                 "Report every command that changed a branch or a remote, and each pushed ref with its commit, as evidence." + READING,
+    "chat": "You are the first responder of a chat. Answer ONLY trivial, certain questions yourself (read at most a file or two); for anything "
+            "else reply with kind=escalate and a stronger model takes over. You never start work and never change files." + READING,
     "debug": "You are the Debug gatekeeper. An agent wants to read environment variables or a secret file. Decide allow, deny or ask_user. "
              "Allow only when the task plausibly needs that specific value or file (e.g. debugging a config error) and the request is narrow. "
              "Deny broad dumps (printenv, whole credential stores, private keys) unless the task clearly needs them. Ask the user when unsure. "

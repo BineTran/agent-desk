@@ -199,7 +199,7 @@ async def test_lost_main_thread_falls_back_to_session_memory():
     r, ev = await mk(rt, thread_id="old")
     out = await r.plan(pkt(), [])
     assert isinstance(out, Plan) and rt.specs[-1].thread_id is None and "# session memory" in rt.specs[-1].prompt
-    assert ("main.thread", {"thread_id": "th-1", "provider": "codex", "account": "codex"}) in ev
+    assert ("main.thread", {"thread_id": "th-1", "provider": "codex", "account": "codex", "cwd": "/w"}) in ev
 
 
 async def test_null_field_is_repaired_then_fails():
@@ -239,3 +239,7 @@ def test_thread_config_mcp_network_and_policy():
     s = spec("deployer"); s.writable_roots.append("/repo/.git")
     cfg, pol = thread_config(s, {}, [])
     assert pol == "untrusted" and cfg["sandbox_workspace_write"] == {"network_access": True, "writable_roots": ["/repo/.git"]}
+
+
+def test_route_lives_in_the_one_main_schema():
+    assert "route" in MainTurn.model_fields and MAIN_FIELD["Route"] == "route" and set(MAIN_FIELD.values()) <= set(MainTurn.model_fields)

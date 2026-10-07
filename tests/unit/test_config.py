@@ -139,3 +139,22 @@ def test_fallback_is_checked_too(tmp_path):
 def test_snapshot_has_no_secret_values_and_stable_hash():
     l = load(None, global_path=NOGLOBAL)
     assert l.snapshot_hash() == load(None, global_path=NOGLOBAL).snapshot_hash()
+
+
+def test_chat_defaults_and_the_chat_role_is_off_until_enabled(tmp_path):
+    from pathlib import Path
+    from agent_desk.config.loader import load
+    c = load(tmp_path, global_path=Path("/nonexistent")).config
+    assert (c.chat.route, c.chat.triage, c.chat.quick_enabled, c.chat.max_quick_files) == ("auto", "main", True, 3)
+    assert c.roles["chat"].enabled is False and c.roles["chat"].access == "read"
+
+
+def test_cascade_triage_needs_the_chat_role_enabled(tmp_path):
+    import pytest
+    from pathlib import Path
+    from agent_desk.config.loader import ConfigError, load
+    (tmp_path / ".agent-desk.yaml").write_text("chat: { triage: cascade }\n")
+    with pytest.raises(ConfigError, match="chat role"):
+        load(tmp_path, global_path=Path("/nonexistent"))
+    (tmp_path / ".agent-desk.yaml").write_text("chat: { triage: cascade }\nroles:\n  chat: { enabled: true }\n")
+    assert load(tmp_path, global_path=Path("/nonexistent")).config.chat.triage == "cascade"

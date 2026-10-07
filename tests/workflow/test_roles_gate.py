@@ -94,3 +94,26 @@ async def test_env_gate_modes_deny_and_user(repo, tmp_path):
     s, rt, out = await go(repo, tmp_path / "u", Script(plan(task("T1"))), ui=ui, extra="approval: { env_gate: user }\n")
     assert await s.approval_handler("explorer", "T1")(Approval("r", "command", "printenv", str(s.ws.path), None)) is True
     assert ui.asked and not [x for x in rt.specs if x.schema_name == "Gate"]
+
+
+async def test_auto_mode_lets_worktree_commands_through_but_still_asks_for_push(repo, tmp_path):
+    from agent_desk.graph import load_session
+    from .conftest import cfg
+    from agent_desk.runtime.mock import MockRuntime
+    ui = AskUI(answer=False)
+    s, rt, out = await go(repo, tmp_path, Script(plan(task("T1"))), ui=ui)
+    h = s.approval_handler("worker", "T1")
+    assert await h(Approval("r", "command", "node build.js", str(s.ws.path), None)) is False and ui.asked   # ask mode: you decide
+    ui.asked.clear()
+    await s.set_approval_mode("auto")
+    assert await h(Approval("r", "command", "node build.js", str(s.ws.path), None)) is True and not ui.asked
+    assert await h(Approval("r", "command", "rm -rf dist", str(s.ws.path), None)) is True and not ui.asked
+    assert await h(Approval("r", "command", "git push origin main", str(s.ws.path), None)) is False and ui.asked[0][0] == "git push origin main"
+    assert await h(Approval("r", "command", "git push --force", str(s.ws.path), None)) is False and len(ui.asked) == 1
+    ev = [e.payload for e in await s.bus.store.events(s.sid) if e.type == "approval.classified" and e.payload.get("auto")]
+    assert [e["command"] for e in ev] == ["node build.js", "rm -rf dist"]
+    sid = s.sid
+    await s.close()
+    s2 = await load_session(sid, cfg(repo), MockRuntime(), HeadlessUI(), tmp_path / "home")
+    assert s2.approval_mode == "auto"
+    await s2.close()

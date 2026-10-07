@@ -10,7 +10,8 @@ from textual.widgets import TextArea
 
 from ..context.inputs import parse_mentions
 
-COMMANDS = {"/approve": "lock the plan and run (/approve --skip-review to skip the architect)", "/questions": "list open questions",
+COMMANDS = {"/ask": "force an answer, no changes: /ask why does X do Y?", "/quick": "force a small direct change (still verified): /quick rename foo to bar",
+            "/plan": "force the full plan flow: /plan add feature X", "/approve": "lock the plan and run (/approve --skip-review to skip the architect)", "/questions": "list open questions", "/mode": "approval mode: /mode auto (commands in the worktree run without asking) · /mode ask · Shift+Tab toggles", "/findings": "the architect's findings in full, with what happened to each",
             "/review": "ask the architect to review the plan again", "/diff-plan": "compare plan versions: /diff-plan 1 2",
             "/model": "switch a role: /model worker claude[@account] sonnet", "/account": "accounts: /account · add <name> [runtime] · login <name> · use <provider|role> <account> · remove <name>", "/engine": "switch a decision engine: /engine retry_or_stop none",
             "/config": "show components and configuration (F2)",

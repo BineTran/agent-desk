@@ -11,15 +11,17 @@ from pathlib import Path
 from . import gitws, safety, verifier
 from .config.loader import Loaded
 from .context import builder
+from .context.inputs import build_inputs
 from .context.memory import Memory
 from .context.render import render
 from .architect import Architect, build_prompt
 from .gatekeeper import EnvGate
-from .contracts import (AgentReport, ControlDecision, Decision, Event, FileRef, Plan, TaskSpec, now)
+from .contracts import (AgentReport, ControlDecision, Decision, Event, FileRef, Plan, Route, TaskSpec, now)
 from .studio import Question
+from .decision import rules
 from .decision.engine import DecisionPipeline
 from .events.bus import EventBus
-from .reasoner import Reasoner, ReasonerError, render_packet
+from .reasoner import ChatTriage, Reasoner, ReasonerError, render_packet
 from .studio import Studio, StudioError, plan_hash, PlanDiff, PlanVersion
 from .roles import resolve
 from .runtime.base import Approval, AgentRuntime, RunSpec, labelled
@@ -43,7 +45,7 @@ class Session:
     runtime: AgentRuntime
     ui: UI
     mem: Memory
-    ws: gitws.Workspace
+    ws: gitws.Workspace | None                             # None until a turn needs to change code (chat reads the user's checkout)
     sched: Scheduler
     reasoner: Reasoner | None = None
     plan: Plan | None = None
@@ -67,11 +69,26 @@ class Session:
     baseline_task: asyncio.Task | None = None
     baseline_notes: dict = field(default_factory=dict)     # check -> why it already fails on the base commit
     _gate: EnvGate | None = None
+    job: int = 0                                           # how many jobs (quick tasks / plans) this conversation has started
+    job_kind: str | None = None                            # "quick" | "plan"
+    job_base: str | None = None                            # HEAD when the current job started: its checks and review see only its changes
+    chat: ChatTriage | None = None
+    approval_mode: str = "ask"                             # ask: unknown commands ask you; auto: only EXTERNAL / outside ones do
+
+    @property
+    def cwd(self) -> str:
+        """Where agents read: the worktree once it exists (that is where the changes are), else the user's checkout (read-only)."""
+        return str(self.ws.path) if self.ws is not None else str(self.repo)
+
+    @property
+    def triggers(self) -> list[str]:
+        """Architect triggers of the current job: quick tasks only get the ones in chat.quick_review."""
+        return list(self.cfg.chat.quick_review if self.job_kind == "quick" else self.cfg.review.triggers)
 
     @property
     def env_gate(self) -> EnvGate:
         if self._gate is None:
-            self._gate = EnvGate(self.runtime, self.cfg, str(self.ws.path), self.overrides)
+            self._gate = EnvGate(self.runtime, self.cfg, self.cwd, self.overrides)
         self._gate.cfg = self.cfg                          # follows settings changed during the session
         return self._gate
 
@@ -114,7 +131,12 @@ class Session:
             elif a.kind == "file_change":
                 verdict = "allow"                                   # the sandbox already bounds writes to the worktree
             else:
-                verdict = safety.classify(a.command or "", a.cwd, self.ws.path)
+                auto = self.approval_mode == "auto"
+                verdict = safety.classify(a.command or "", a.cwd, Path(self.cwd), auto=auto, local_ok=self.ws is not None)
+                if auto and verdict == "allow" and safety.classify(a.command or "", a.cwd, Path(self.cwd)) == "approve":
+                    await self.emit("approval.classified", {"command": a.command, "verdict": verdict, "cwd": a.cwd, "auto": True},
+                                    source="policy", task_id=task_id)
+                    return True
             await self.emit("approval.classified", {"command": a.command, "verdict": verdict, "cwd": a.cwd}, source="policy", task_id=task_id)
             if verdict == "allow":
                 return True
@@ -150,15 +172,23 @@ class Session:
             return None, f"debug gatekeeper: {g.reason}"
         return g.decision == "allow", ""
 
+    async def set_approval_mode(self, mode: str, by: str = "user") -> str:
+        if mode not in ("ask", "auto"):
+            raise ValueError(f"unknown approval mode {mode!r}: ask | auto")
+        self.approval_mode = mode
+        await self.emit("approval.mode", {"mode": mode, "by": by}, source="user")
+        return ("approvals: AUTO — commands in the worktree run without asking; push, deploy, migrations, sudo and anything outside still ask"
+                if mode == "auto" else "approvals: ask — every command off the allow-list asks you")
+
     async def record_decision(self, d: ControlDecision, task_id: str | None) -> None:
         await self.bus.store.record_decision(self.sid, d, task_id, now())
         await self.emit("decision.made", d.model_dump(exclude={"input_snapshot"}), source=d.engine, task_id=task_id)
 
     # ---------------- plan phase ----------------
     def _agents(self, main_thread: str | None = None) -> None:
-        self.reasoner = Reasoner(self.runtime, self.cfg, str(self.ws.path), self.sink("main", None, "main"), self.approval_handler("main", None), self.overrides,
+        self.reasoner = Reasoner(self.runtime, self.cfg, self.cwd, self.sink("main", None, "main"), self.approval_handler("main", None), self.overrides,
                                  memory=lambda: render(self.mem), thread_id=main_thread)
-        self.architect = Architect(self.runtime, self.cfg, str(self.ws.path), self.sink("architect", None, "architect"), self.approval_handler("architect", None), self.overrides)
+        self.architect = Architect(self.runtime, self.cfg, self.cwd, self.sink("architect", None, "architect"), self.approval_handler("architect", None), self.overrides)
         if self.pipeline is not None:
             self.pipeline.main_pick = self.reasoner.pick
 
@@ -173,7 +203,8 @@ class Session:
                 return True
             await self.emit("plan.abandoned")
             return False
-        await self.mem.set_brief(await self._brief())
+        if not await self.mem.brief():
+            await self.mem.set_brief(await self._brief())
         self.start_baseline()                                       # what already fails on the base commit: runs while Main plans
         cmds = [c.command for c in self.cfg.verification.values()]
         if self.baseline_notes:                                     # known before planning: don't plan "fix the test suite"
@@ -203,6 +234,139 @@ class Session:
             return True
         await self.emit("plan.abandoned")
         return False
+
+    # ---------------- conversation: each message -> answer | quick job | plan job ----------------
+    async def _state(self, forced: str | None) -> dict:
+        st: dict = {"worktree": None, "reading": self.cwd, "verification": [c.command for c in self.cfg.verification.values()],
+                    "max_quick_files": self.cfg.chat.max_quick_files}
+        if self.ws is not None:
+            commits = await gitws.git(self.ws.path, "rev-list", "--count", f"{self.ws.session_base}..HEAD", check=False)
+            st["worktree"] = {"branch": self.ws.branch, "commits": int(commits or 0)}
+        if self.job:
+            st["last_job"] = {"job": self.job, "kind": self.job_kind, "goal": self.plan.goal if self.plan else None, "outcome": self.outcome}
+        if forced:
+            st["user_forced_kind"] = forced
+        return st
+
+    def _chat(self) -> ChatTriage:
+        if self.chat is None:
+            self.chat = ChatTriage(self.runtime, self.cfg, self.cwd, self.sink("chat", None, "chat"), self.approval_handler("chat", None), self.overrides)
+        self.chat.cfg, self.chat.cwd = self.cfg, self.cwd
+        return self.chat
+
+    async def route(self, text: str, forced: str | None = None) -> Route:
+        """Decide how one chat message is handled. Deterministic first (forced kind, chat.route), then the optional cheap
+        triage, then ONE Main call (an answer comes back in that same call), then the guard, which only ever escalates."""
+        await self.emit("chat.user", {"text": text}, source="user")        # L0 only: chat never enters packets
+        known = await self.mem.inputs()
+        commit = self.ws.base_commit[:7] if self.ws else (await gitws.git(self.repo, "rev-parse", "--short=7", "HEAD", check=False))
+        for i in build_inputs(text, Path(self.cwd), self.home, commit, start=len(known) + 1):
+            if not any(k.ref == i.ref for k in known):
+                await self.mem.add_input(i)
+        if self.reasoner is None:
+            self._agents()
+        state = await self._state(forced)
+        r, by = None, "user" if forced else "main"
+        if forced == "plan" or (not forced and self.cfg.chat.route == "plan"):
+            r, by = Route(kind="plan", text="Making a plan for this.", brief=text, task=None, reason="/plan" if forced else "chat.route: plan"), by if forced else "rule"
+        elif not forced and self.cfg.chat.triage == "cascade" and "chat" in self.cfg.roles and self.cfg.roles["chat"].enabled:
+            c = await self._chat().triage(text, state)
+            if c.kind == "answer":
+                r, by = c, "chat"
+            else:
+                await self.emit("chat.escalated", {"reason": c.reason}, source="chat")
+        if r is None:
+            pkt = await builder.build(self.mem, "main", None, max_tokens=self.cfg.context.packet_max_tokens)
+            r = await self.reasoner.route(pkt, text, state)
+            if forced and r.kind != forced and forced in ("answer", "quick"):
+                if forced == "answer":                                  # /ask: never starts work, whatever Main thought
+                    r = r.model_copy(update={"kind": "answer", "task": None})
+                elif r.task is not None:
+                    r = r.model_copy(update={"kind": "quick"})
+        kind, why = rules.route_guard(r.kind, r.task, text, self.cfg.chat)
+        if kind != r.kind:
+            r, by = r.model_copy(update={"kind": kind, "task": None, "reason": why}), "rule"
+        if r.kind != "answer" and not r.brief:
+            r = r.model_copy(update={"brief": text})
+        await self.record_decision(ControlDecision(type="intent", engine={"chat": "llm"}.get(by, by), selected=r.kind, confidence=None,
+                                                   distribution={}, sharp=None, input_snapshot={"text": text[:2000], "reason": r.reason}), None)
+        await self.emit("chat.routed", {"kind": r.kind, "by": by, "reason": r.reason, "task": r.task.title if r.task else None}, source=by)
+        await self.emit("chat.main", {"kind": "answer" if r.kind == "answer" else "route", "text": r.text}, source="chat" if by == "chat" else "main")
+        return r
+
+    async def _recent_chat(self, n: int = 6) -> str:
+        evs = [e for e in await self.bus.store.events(self.sid) if e.type in ("chat.user", "chat.main")][-n:]
+        return "\n".join(f"- {'user' if e.type == 'chat.user' else 'main'}: {e.payload.get('text', '')[:600]}" for e in evs)
+
+    async def ensure_workspace(self) -> gitws.Workspace:
+        """The worktree is made the first time a turn needs to change code. Main then starts a fresh thread there (seeded from
+        the curated memory + the last chat turns): a runtime thread cannot move to another directory."""
+        if self.ws is not None:
+            return self.ws
+        self.ws = await gitws.create(self.repo, self.home, self.sid)
+        await self.bus.store.db.execute("UPDATE sessions SET base_commit=?, branch=?, worktree=? WHERE id=?",
+                                        (self.ws.base_commit, self.ws.branch, str(self.ws.path), self.sid))
+        await self.bus.store.db.commit()
+        if self.pipeline is not None:
+            self.pipeline.repo = self.ws.path
+        self._gate = None
+        await self.emit("workspace.created", {"branch": self.ws.branch, "worktree": str(self.ws.path), "base": self.ws.base_commit})
+        await self.prepare_workspace()
+        if self.reasoner is not None:
+            had = self.reasoner.thread_id
+            self.reasoner.cwd = self.architect.cwd = self.cwd
+            if had:
+                chat = await self._recent_chat()
+                self.reasoner.rotate(await render(self.mem) + (f"\n## Recent chat (context only)\n{chat}\n" if chat else ""))
+                await self.emit("main.rotated", {"reason": "workspace created: Main now reads the worktree", "thread_id": None})
+        return self.ws
+
+    def _reset_job(self) -> None:
+        c = self.cfg.scheduler
+        self.sched = Scheduler(c.max_total_agents, c.max_writers, c.max_retries_per_task)
+        self.studio, self.plan, self.plan_version, self.approved_hash = None, None, 0, None
+        self.unmet, self.results, self.replans, self.quota_hit = [], [], {}, None
+        self.architect_reviewed, self.baseline_notes = True, {}
+        if self.baseline_task is not None and not self.baseline_task.done():
+            self.baseline_task.cancel()
+        self.baseline, self.baseline_task = None, None             # the next job's base commit has its own baseline
+
+    async def start_job(self, kind: str, route: Route | None = None, brief: str | None = None) -> None:
+        """Start a quick task or a plan on the session branch. Memory, Main's thread and overrides carry over; per-job state does not."""
+        await self.ensure_workspace()
+        if self.job and await gitws.stash_leftovers(self.ws, f"agent-desk/{self.sid}/j{self.job}-leftovers"):
+            await self.emit("workspace.stashed", {"job": self.job, "stash": f"agent-desk/{self.sid}/j{self.job}-leftovers"})
+        if self.job:
+            self._reset_job()
+        self.job += 1
+        self.job_kind = kind
+        self.job_base = self.ws.base_commit = await gitws.head(self.ws)
+        text = brief or (route.brief if route else None) or await self._brief()
+        await self.mem.set_brief(text)
+        await self.emit("job.started", {"job": self.job, "kind": kind, "brief": text, "base": self.job_base})
+        if self.reasoner is None:
+            self._agents()
+        if kind == "quick":
+            await self._lock_quick(route.task, text, route.reason)
+
+    async def _lock_quick(self, task: TaskSpec, brief: str, reason: str) -> None:
+        """A quick task is a one-task plan the route approved: no clarify, plan call, before_plan review or studio; execution,
+        safety, verification and the completion gate are exactly those of any plan."""
+        t = task.model_copy(update={"id": "T1", "depends_on": [], "requires_write": True, "kind": "implementation"})
+        plan = Plan(goal=t.goal or brief, constraints=[], acceptance_criteria=t.acceptance_criteria or [brief], tasks=[t], risks=[], out_of_scope=[])
+        self.studio = Studio(self)
+        v = await self.studio.start(plan, source="quick", note=reason[:200])
+        self.studio.locked = True
+        await self.lock_plan(v, by="route", rotate=False)
+        self.start_baseline()
+
+    async def job_finished(self, outcome: str) -> None:
+        if not self.job:
+            return
+        title = self.plan.goal if self.plan else ""
+        commits = (await gitws.git(self.ws.path, "log", "--oneline", f"{self.job_base}..HEAD", check=False)).splitlines() if self.ws and self.job_base else []
+        await self.mem.add_note("job", f"J{self.job}", f"{self.job_kind} \"{title[:120]}\" -> {outcome}" + (f" ({len(commits)} commit(s))" if commits else ""), "harness")
+        await self.emit("job.finished", {"job": self.job, "kind": self.job_kind, "outcome": outcome})
 
     # ---------------- in-session control (config source: session) ----------------
     async def switch_role(self, role: str, provider: str, model: str | None = None, tier: str | None = None, account: str | None = None) -> str:
@@ -375,6 +539,7 @@ class Session:
     async def restore(self, events: list[Event]) -> None:
         """Rebuild in-memory state from the persisted events (the canonical history). Memory (L2) is already in SQLite."""
         self.generation = 1 + sum(e.type == "session.reopened" for e in events)
+        self.approval_mode = next((e.payload.get("mode", "ask") for e in reversed(events) if e.type == "approval.mode"), "ask")
         main_thread = None
         for e in events:
             if e.type == "main.thread":
@@ -387,10 +552,21 @@ class Session:
         if main_thread and (main_prov != last.get("provider") or main_acc != last.get("account")):   # no recorded account: owner unknown, start fresh
             main_thread = None                                     # Main moved to another provider/account: its old thread cannot be continued
         self._agents(main_thread)
+        if last.get("cwd") and main_thread and last["cwd"] != self.cwd:
+            main_thread = self.reasoner.thread_id = None            # Main read another directory then (before the worktree existed)
         if main_thread:
             self.reasoner.thread_owner = self.reasoner.owner(main_prov, main.account)
         self.reasoner._n = sum(e.type == "agent.started" and (e.agent_run_id or "").startswith("main-") for e in events)
         self.architect._n = sum(e.type == "agent.started" and (e.agent_run_id or "").startswith("architect-") for e in events)
+        starts = [i for i, e in enumerate(events) if e.type == "job.started"]
+        if starts:                                                 # only the last job is live; earlier ones are history (memory has their notes)
+            e = events[starts[-1]]
+            self.job, self.job_kind, self.job_base = e.payload["job"], e.payload["kind"], e.payload.get("base")
+            events = events[starts[-1]:]
+            if self.ws is not None and self.job_base:
+                self.ws.base_commit = self.job_base
+        elif any(e.type == "plan.version" for e in events):
+            self.job, self.job_kind = 1, "plan"                    # a session from before jobs: one plan
         if not any(e.type == "plan.version" for e in events):
             return                                                 # died before the first plan: plan_phase starts over
         self.studio = Studio(self)
@@ -423,18 +599,19 @@ class Session:
                 reviewed = True
             elif e.type == "architect.invalidated":
                 reviewed = False
-        self.architect_reviewed = reviewed or "before_plan" not in self.cfg.review.triggers
+        self.architect_reviewed = reviewed or "before_plan" not in self.triggers
         for t in self.sched.tasks.values():
             if t.status not in (DONE, STALE) and t.status != "dropped":
                 t.status = PENDING
 
-    async def lock_plan(self, v: PlanVersion) -> None:
+    async def lock_plan(self, v: PlanVersion, by: str = "user", rotate: bool = True) -> None:
         """The only way work can start: freezes the approved plan by hash; Scheduler refuses everything before this."""
         self.plan, self.plan_version, self.approved_hash = v.plan, v.n, v.hash
         self.sched.load(v.plan.tasks)
         self.sched.plan_locked = True
-        await self.emit("plan.approved", {"version": v.n, "hash": v.hash}, source="user")
-        self.reasoner.rotate(await render(self.mem))             # curated memory replaces the planning chatter
+        await self.emit("plan.approved", {"version": v.n, "hash": v.hash, "by": by}, source="user" if by == "user" else "harness")
+        if rotate:
+            self.reasoner.rotate(await render(self.mem))         # curated memory replaces the planning chatter
 
     async def apply_plan(self, v: PlanVersion, diff: PlanDiff) -> None:
         """A plan change after approval. Material changes were accepted by the user; non-material ones are auto-acknowledged."""
@@ -457,7 +634,7 @@ class Session:
 
     # ---------------- architect ----------------
     async def _architect(self, trigger: str, **kw):
-        if trigger not in self.cfg.review.triggers:
+        if trigger not in self.triggers:
             return None
         pkt = await builder.build(self.mem, "architect", None, max_tokens=self.cfg.context.packet_max_tokens)
         plan = self.studio.current.plan if (trigger == "before_plan" or not self.studio.locked) else self.plan
@@ -470,7 +647,7 @@ class Session:
         return out
 
     async def _review_plan(self) -> None:
-        if "before_plan" not in self.cfg.review.triggers:
+        if "before_plan" not in self.triggers:
             return
         self.architect_reviewed = False
         for _ in range(self.cfg.review.max_rounds):
@@ -498,7 +675,7 @@ class Session:
 
     async def _escalate(self, tid: str, summary: str) -> bool:
         """Repeated failure: independent review -> Main revises the plan -> fresh budget. At most max_replans_per_task times."""
-        if "error_repeats" not in self.cfg.review.triggers or self.replans.get(tid, 0) >= self.cfg.review.max_replans_per_task:
+        if "error_repeats" not in self.triggers or self.replans.get(tid, 0) >= self.cfg.review.max_replans_per_task:
             return False
         self.replans[tid] = self.replans.get(tid, 0) + 1
         ts = self.sched.tasks[tid]
@@ -521,7 +698,7 @@ class Session:
 
     async def _final_review(self) -> None:
         """Last trigger: critical findings block completion; the rest become follow-ups."""
-        if "before_done" not in self.cfg.review.triggers or self.unmet or not self.sched.all_done():
+        if "before_done" not in self.triggers or self.unmet or not self.sched.all_done():
             return
         for rnd in range(self.cfg.review.max_rounds):
             diff = await gitws.diff_since_base(self.ws)
@@ -592,7 +769,7 @@ class Session:
         pkt = await builder.build(self.mem, role_name, spec, max_tokens=self.cfg.context.packet_max_tokens,
                                   previous_attempt=ts.last_summary or None, failure_tail=ts.tail,
                                   tail_lines=self.cfg.context.failure_tail_lines)
-        run_id = f"{role_name}-{tid}-a{ts.attempts}" + (f"-r{self.generation}" if self.generation else "")
+        run_id = f"{role_name}-{tid}-a{ts.attempts}" + (f"-j{self.job}" if self.job > 1 else "") + (f"-r{self.generation}" if self.generation else "")
         deploying = spec.kind == "deployment"
         prompt = render_packet(pkt) + "\n\n---\n" + (
             "Carry out these deploy steps in the current directory with the repository's own deploy tooling. Every push or deploy command is "
@@ -717,9 +894,15 @@ class Session:
         facts = "\n".join(f"- {r.name}: {r.status or ('pass' if r.passed else 'FAIL')} (`{r.command}`)" for r in self.results) or "- no checks configured"
         facts += "\n" + "\n".join(f"- {t.spec.id} {t.spec.title}: commit {t.commit}" for t in self.sched.tasks.values() if t.commit)
         try:
-            pkt = await builder.build(self.mem, "main", None, max_tokens=self.cfg.context.packet_max_tokens)
-            s = await self.reasoner.summarize(pkt, facts)
-            await self.emit("final.summary", s.model_dump(), source="main")
+            if self.job_kind == "quick" and self.cfg.chat.quick_summary == "report":     # no Main call: the worker's report + the checks
+                t = next(iter(self.sched.tasks.values()))
+                await self.emit("final.summary", {"text": t.last_summary or t.spec.title, "ac_evidence": [f"{a}: " + ", ".join(
+                    f"{r.name} {'pass' if r.passed else r.status or 'FAIL'}" for r in self.results) for a in t.spec.acceptance_criteria[:5]]},
+                    source="harness")
+            else:
+                pkt = await builder.build(self.mem, "main", None, max_tokens=self.cfg.context.packet_max_tokens)
+                s = await self.reasoner.summarize(pkt, facts)
+                await self.emit("final.summary", s.model_dump(), source="main")
         except ReasonerError as e:
             await self.emit("final.summary", {"text": f"(summary unavailable: {e})", "ac_evidence": []})
         (self.home / "session.md").write_text(await render(self.mem))

@@ -14,7 +14,7 @@ async def render(mem: Memory, title: str = "") -> str:
     out += ["", "## Relevant files"]
     for f in await mem.files():
         out.append(f"- {f.path}:{f.lines} @{f.commit} — {f.why}" + (" [STALE]" if f.stale else ""))
-    for kind, head in (("note", "Pinned notes"), ("finding", "Findings"), ("followup", "Follow-ups")):
+    for kind, head in (("job", "Jobs so far in this conversation"), ("note", "Pinned notes"), ("finding", "Findings"), ("followup", "Follow-ups")):
         items = await mem.notes(kind)
         if items:
             out += ["", f"## {head}"] + [f"- {n['id']} {n['text']}" for n in items]

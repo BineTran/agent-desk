@@ -124,3 +124,69 @@ def test_components_view_has_all_groups_with_sources_and_problems(tmp_path):
         assert g in s
     assert any(l.startswith(" worker") and " repo " in l for l in s.splitlines())          # the override is attributed to the repo layer
     assert " repo " in s and "claude auth login" in s and "subscription_only ✓" in s and "pnpm test" in s and "not enabled" in s and "available, not enabled" in s
+
+
+class _C:
+    def __init__(self, label, ok=True, blocking=True, detail=""):
+        self.label, self.ok, self.blocking, self.detail = label, ok, blocking, detail
+
+
+READY = [_C("no open blocking questions"), _C("architect review done"), _C("verification configured", ok=False, blocking=False)]
+
+
+def step(mode="PLAN", checks=READY, open_q=None, busy="", status="PLANNING", pending=None, **kw):
+    p = Projection()
+    p.status, p.pending = status, pending
+    for k, v in kw.items():
+        setattr(p, k, v)
+    bar, hint = views.next_step(p, mode, checks, open_q, busy, 0, "T2 (worker)")
+    return bar.plain, hint
+
+
+def test_next_step_says_what_to_do_in_each_plan_state():
+    bar, hint = step()
+    assert bar.startswith("✓ Ready") and "/approve runs the plan" in bar and "! verification configured" in bar and hint.startswith("/approve")
+    bar, hint = step(open_q=[{"id": "Q-3"}, {"id": "Q-5"}])
+    assert bar.startswith("✗ 2 questions wait for you: Q-3, Q-5") and "1–9" in hint
+    bar, _ = step(checks=[_C("architect review done", ok=False)])
+    assert "architect has not reviewed" in bar and "/review" in bar
+    bar, hint = step(pending={"changes": []})
+    assert bar.startswith("Proposal waiting") and "a accept" in hint
+    bar, _ = step(busy="Architect is reviewing…")
+    assert "Architect is reviewing" in bar and "type comments meanwhile" in bar
+    assert step(checks=[_C("no tasks", ok=False)])[0].startswith("✗ not ready: no tasks")
+
+
+def test_next_step_for_run_result_chat_and_quota():
+    assert step("RUN", tasks={"T1": "done", "T2": "pending"}, plan={"tasks": [{}, {}]})[0].count("1/2 done") == 1
+    assert step("RESULT", status="COMPLETED")[0].startswith("✓ COMPLETED")
+    assert "/resume" in step("RESULT", status="FAILED")[0]
+    assert step("CHAT")[0].startswith("Ask anything")
+    assert "quota reached" in step("PLAN", status="WAITING_QUOTA", quota_hit={"provider": "codex", "reset": "04:10"})[0]
+
+
+def test_checklist_is_one_line_when_ready_and_lists_only_what_is_missing_otherwise():
+    t = views.checklist_view(READY).plain
+    assert t.splitlines()[0] == "Ready to approve? ✓" and "! verification configured" in t and "no open blocking" not in t
+    t = views.checklist_view([_C("no open blocking questions", ok=False, detail="Q-1"), _C("tasks")]).plain
+    assert "Ready to approve? ✗ 1 left" in t and "✗ no open blocking questions — Q-1" in t and "tasks" not in t
+
+
+def test_architect_message_is_one_short_line_per_finding():
+    long = "x" * 400
+    m = {"who": "arch", "text": "revise", "trigger": "before_plan",
+         "findings": [{"id": "F1", "severity": "major", "file": "src/a/b/leave.dto.ts", "message": long}]}
+    lines = views.message_view(m).plain.splitlines()
+    assert len(lines) == 3 and all(len(l) <= 140 for l in lines) and "leave.dto.ts" in lines[1] and "/findings" in lines[2]
+
+
+def test_plan_view_lists_findings_with_their_state():
+    p = Projection()
+    p.plan = {"goal": "g", "constraints": [], "acceptance_criteria": ["AC"], "tasks": [], "risks": [], "out_of_scope": []}
+    p.questions = {"Q-1": {"id": "Q-1", "text": "t", "answered": False}, "Q-2": {"id": "Q-2", "text": "t", "answered": True}}
+    p.findings = {"F1": {"severity": "major", "file": "a.ts", "verdict": "fixed", "question": None},
+                  "F2": {"severity": "minor", "file": "b.ts", "verdict": "question", "question": "Q-1"},
+                  "F3": {"severity": "minor", "file": "c.ts", "verdict": "question", "question": "Q-2"},
+                  "F4": {"severity": "nit", "file": "d.ts", "verdict": "rejected", "question": None}}
+    t = txt(views.plan_view(p))
+    assert "Architect review" in t and "fixed ✓" in t and "Q-1 open ← blocks /approve" in t and "Q-2 answered ✓" in t and "rejected" in t

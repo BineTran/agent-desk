@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-RoleName = Literal["main", "explorer", "worker", "researcher", "architect", "deployer", "debug"]
+RoleName = Literal["main", "explorer", "worker", "researcher", "architect", "deployer", "debug", "chat"]
 POINTS = ("route", "tier", "dangerous", "retry_or_stop")
 SECRET_RE = re.compile(r"(sk-[A-Za-z0-9_-]{16,}|Bearer\s+[A-Za-z0-9._-]{16,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})")
 
@@ -135,6 +135,17 @@ class Review(Strict):
     max_replans_per_task: int = 1
 
 
+class Chat(Strict):
+    """How a chat message is handled: Main answers it, runs one quick task, or makes a plan (`route: plan` = always plan)."""
+    route: Literal["auto", "plan"] = "auto"
+    triage: Literal["main", "cascade"] = "main"   # cascade: the cheap `chat` role answers trivial questions first, else hands over to Main
+    quick_enabled: bool = True
+    max_quick_files: int = 3
+    plan_keywords: list[str] = ["push", "deploy", "merge", "release", "publish", "migrat", "force"]
+    quick_review: list[Literal["before_plan", "error_repeats", "before_done"]] = ["error_repeats"]
+    quick_summary: Literal["report", "main"] = "report"
+
+
 class Quota(Strict):
     on_limit: Literal["wait", "switch"] = "wait"
 
@@ -174,6 +185,7 @@ class Config(Strict):
     context: Context = Context()
     quota: Quota = Quota()
     review: Review = Review()
+    chat: Chat = Chat()
     verification: dict[str, Check] = {}
     approval: Approval = Approval()
     login: LoginCfg = LoginCfg()
@@ -231,6 +243,10 @@ class Config(Strict):
             if p.auth == "env" and self.policy.subscription_only and pname not in self.policy.allow_api_key:
                 raise ValueError(f"provider {pname!r} uses an API key but policy.subscription_only is on; "
                                  f"add it to policy.allow_api_key to allow this exception")
+        if self.chat.triage == "cascade" and not (self.roles.get("chat") and self.roles["chat"].enabled):
+            raise ValueError("chat.triage: cascade needs the chat role: set roles.chat.enabled: true")
+        if "chat" in self.roles and self.roles["chat"].access != "read":
+            raise ValueError("role chat must be access: read (it only answers)")
         for k, pt in self.decision.points.items():
             if pt.provider and pt.provider not in self.providers:
                 raise ValueError(f"decision point {k}: unknown provider {pt.provider!r}")

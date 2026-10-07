@@ -161,10 +161,28 @@ Other ways to run:
 ```bash
 agent-desk -f brief.md                 # open the TUI with a brief pre-filled
 agent-desk headless "add a --json flag to the export command"
+agent-desk headless "what does export do?" --route auto   # Main decides: answer / quick change / full plan
 agent-desk ls                          # past sessions
 agent-desk resume <session-id>         # continue one (same worktree, branch, memory)
 agent-desk show <session-id>           # read-only replay
 ```
+
+### How Main handles a message
+
+Every message goes to Main, which picks one of three routes in a single call:
+
+| Route | When | What runs |
+|---|---|---|
+| **answer** | questions, explanations, reviews | Main answers right away from your checkout (read-only); no worktree, no other agent |
+| **quick** | a small, clear change (≤ `chat.max_quick_files` exact files; no push/deploy/migration) | one worker in the session worktree; no clarify, no architect before-plan review, no plan approval; checks and safety still apply |
+| **plan** | everything else | clarify → plan → architect → Plan Studio → run |
+
+The worktree is created only when a quick task or plan starts. A session is a conversation: after a
+task finishes, the next message is routed again, on the same branch. Force a route with
+`/ask`, `/quick` or `/plan <message>`. A deterministic guard can only escalate quick → plan (keywords such as
+push/deploy/migrate, too many files, globs); tune it under `chat:` in the config. `chat.route: plan` restores
+"always plan". For trivial questions you can let a cheap model answer first: `chat.triage: cascade` and
+`roles.chat.enabled: true` (Haiku by default; it hands anything else to Main).
 
 ### In the TUI
 
@@ -208,6 +226,12 @@ stores the **name** of the environment variable, never the key.
   `~/.agent-desk` (change with `--home`).
 - Every `git push` asks you; force-push is always denied; destructive filesystem commands,
   DB migrations and deployments need approval (`approval.require_for`).
+- Approval mode, per session (**Shift+Tab** or `/mode ask|auto`; `[A]` in an approval dialog approves and
+  switches): **ask** (default) asks for every command off the allow-list; **auto** lets commands inside the
+  session worktree run without asking — scripts, `rm -r`, `git reset --hard` included — while `git push`,
+  deploy/publish, migrations, `kubectl`/`terraform`, `sudo` and anything touching paths outside the worktree
+  still ask. The deny-list and the secret gatekeeper apply in both modes. With Codex, an approved command
+  runs outside Codex's own sandbox, so auto trusts the agent inside the worktree.
 - Reading env vars or secret files goes through a gatekeeper role.
 
 ## Development
