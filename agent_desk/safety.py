@@ -7,8 +7,12 @@ from pathlib import Path
 
 DENY = [r"\brm\s+-[a-z]*r[a-z]*f?\s+(/|~|\$HOME)(\s|$)", r"\bgit\s+push\b.*--force", r":\(\)\s*\{", r"\bmkfs\b", r"\bdd\s+.*of=/dev/",
         r"\bchmod\s+-R\s+777\s+/", r"curl[^|]*\|\s*(sudo\s+)?(ba)?sh"]
-APPROVE = [r"\bgit\s+push\b", r"\bgit\s+reset\s+--hard\b", r"\bgit\s+clean\b", r"\brm\s+-[a-z]*r", r"\bmigrate\b", r"\bprisma\s+db\s+push\b",
-           r"\bkubectl\s+(apply|delete)\b", r"\bterraform\s+(apply|destroy)\b", r"\b(deploy|publish)\b", r"\bnpm\s+publish\b", r"\bsudo\b"]
+# Reaches outside the worktree (remotes, databases, clusters, the machine): always asks, in every approval mode.
+EXTERNAL = [r"\bgit\s+push\b", r"\bmigrate\b", r"\bprisma\s+db\s+push\b", r"\bkubectl\s+(apply|delete)\b", r"\bterraform\s+(apply|destroy)\b",
+            r"\b(deploy|publish)\b", r"\bnpm\s+publish\b", r"\bsudo\b"]
+# Destroys work, but only in the worktree: approval mode `auto` lets it run there.
+LOCAL_DESTRUCTIVE = [r"\bgit\s+reset\s+--hard\b", r"\bgit\s+clean\b", r"\brm\s+-[a-z]*r"]
+APPROVE = EXTERNAL + LOCAL_DESTRUCTIVE
 # Reading env vars or secret files: not dangerous to run, but the output is a secret. Verdict "secret" -> approval.env_gate decides.
 SECRET_CMD = [r"(^|[;&|]\s*)(printenv|env|export\s+-p|set)\s*($|[;&|])", r"(^|[;&|]\s*)printenv\s+\w", r"\becho\b[^;&|]*\$\{?[A-Za-z_]\w*",
               r"\b(security\s+find-(generic|internet)-password|gh\s+auth\s+token|aws\s+configure\s+get)\b"]
@@ -47,7 +51,9 @@ def _outside(command: str, cwd: str | None, root: Path) -> bool:
     return False
 
 
-def classify(command: str, cwd: str | None, root: Path, extra_approve: list[str] | None = None) -> str:
+def classify(command: str, cwd: str | None, root: Path, extra_approve: list[str] | None = None, auto: bool = False, local_ok: bool = False) -> str:
+    """deny > secret > approve > allow. auto: commands inside `root` run without asking, except EXTERNAL ones and anything outside;
+    local_ok: `root` is the session worktree, so LOCAL_DESTRUCTIVE commands may run there too."""
     c = command.strip()
     inner = re.sub(r"^(/bin/)?(ba|z)?sh\s+-l?c\s+['\"]?", "", c).rstrip("'\"")
     for text in (c, inner):
@@ -59,9 +65,11 @@ def classify(command: str, cwd: str | None, root: Path, extra_approve: list[str]
         toks = inner.split()
     if any(re.search(p, inner) for p in SECRET_CMD) or any(secret_path(t) for t in toks if not t.startswith("-")):
         return "secret"
-    if _outside(inner, cwd, root) or any(re.search(p, inner) for p in APPROVE + (extra_approve or [])):
+    if _outside(inner, cwd, root) or any(re.search(p, inner) for p in EXTERNAL + (extra_approve or [])):
         return "approve"
+    if any(re.search(p, inner) for p in LOCAL_DESTRUCTIVE):
+        return "allow" if auto and local_ok else "approve"
     parts = re.split(r"\s*(?:&&|\|\||;|\|)\s*", inner)
     if parts and all(any(re.search(p, x) for p in ALLOW) for x in parts if x):
         return "allow"
-    return "approve"
+    return "allow" if auto else "approve"

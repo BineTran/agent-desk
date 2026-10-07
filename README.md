@@ -226,6 +226,12 @@ stores the **name** of the environment variable, never the key.
   `~/.agent-desk` (change with `--home`).
 - Every `git push` asks you; force-push is always denied; destructive filesystem commands,
   DB migrations and deployments need approval (`approval.require_for`).
+- Approval mode, per session (**Shift+Tab** or `/mode ask|auto`; `[A]` in an approval dialog approves and
+  switches): **ask** (default) asks for every command off the allow-list; **auto** lets commands inside the
+  session worktree run without asking — scripts, `rm -r`, `git reset --hard` included — while `git push`,
+  deploy/publish, migrations, `kubectl`/`terraform`, `sudo` and anything touching paths outside the worktree
+  still ask. The deny-list and the secret gatekeeper apply in both modes. With Codex, an approved command
+  runs outside Codex's own sandbox, so auto trusts the agent inside the worktree.
 - Reading env vars or secret files goes through a gatekeeper role.
 
 ## Development

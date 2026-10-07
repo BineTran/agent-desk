@@ -73,6 +73,7 @@ class Session:
     job_kind: str | None = None                            # "quick" | "plan"
     job_base: str | None = None                            # HEAD when the current job started: its checks and review see only its changes
     chat: ChatTriage | None = None
+    approval_mode: str = "ask"                             # ask: unknown commands ask you; auto: only EXTERNAL / outside ones do
 
     @property
     def cwd(self) -> str:
@@ -130,7 +131,12 @@ class Session:
             elif a.kind == "file_change":
                 verdict = "allow"                                   # the sandbox already bounds writes to the worktree
             else:
-                verdict = safety.classify(a.command or "", a.cwd, Path(self.cwd))
+                auto = self.approval_mode == "auto"
+                verdict = safety.classify(a.command or "", a.cwd, Path(self.cwd), auto=auto, local_ok=self.ws is not None)
+                if auto and verdict == "allow" and safety.classify(a.command or "", a.cwd, Path(self.cwd)) == "approve":
+                    await self.emit("approval.classified", {"command": a.command, "verdict": verdict, "cwd": a.cwd, "auto": True},
+                                    source="policy", task_id=task_id)
+                    return True
             await self.emit("approval.classified", {"command": a.command, "verdict": verdict, "cwd": a.cwd}, source="policy", task_id=task_id)
             if verdict == "allow":
                 return True
@@ -165,6 +171,14 @@ class Session:
         if g.decision == "ask_user":
             return None, f"debug gatekeeper: {g.reason}"
         return g.decision == "allow", ""
+
+    async def set_approval_mode(self, mode: str, by: str = "user") -> str:
+        if mode not in ("ask", "auto"):
+            raise ValueError(f"unknown approval mode {mode!r}: ask | auto")
+        self.approval_mode = mode
+        await self.emit("approval.mode", {"mode": mode, "by": by}, source="user")
+        return ("approvals: AUTO — commands in the worktree run without asking; push, deploy, migrations, sudo and anything outside still ask"
+                if mode == "auto" else "approvals: ask — every command off the allow-list asks you")
 
     async def record_decision(self, d: ControlDecision, task_id: str | None) -> None:
         await self.bus.store.record_decision(self.sid, d, task_id, now())
@@ -525,6 +539,7 @@ class Session:
     async def restore(self, events: list[Event]) -> None:
         """Rebuild in-memory state from the persisted events (the canonical history). Memory (L2) is already in SQLite."""
         self.generation = 1 + sum(e.type == "session.reopened" for e in events)
+        self.approval_mode = next((e.payload.get("mode", "ask") for e in reversed(events) if e.type == "approval.mode"), "ask")
         main_thread = None
         for e in events:
             if e.type == "main.thread":

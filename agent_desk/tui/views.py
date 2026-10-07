@@ -62,7 +62,7 @@ def limit_text(info: dict) -> Text:
     return t
 
 
-def status_bar(cfg, st, notes: list[str] | None = None, limits: dict | None = None) -> Text:
+def status_bar(cfg, st, notes: list[str] | None = None, limits: dict | None = None, mode: str | None = None) -> Text:
     t = Text()
     for name, p in st.providers.items():
         ok = p.logged_in and not p.mismatch
@@ -85,6 +85,10 @@ def status_bar(cfg, st, notes: list[str] | None = None, limits: dict | None = No
     t.append("rules" + ("+" + "+".join(sorted(live)) if live else ""), style="bold")
     t.append("   sandbox ", style="bright_black")
     t.append("✓", style="green")
+    if mode:
+        t.append("   approvals ", style="bright_black")
+        t.append("AUTO ⚡" if mode == "auto" else "ask", style="bold yellow" if mode == "auto" else "white")
+        t.append(" · Shift+Tab", style="bright_black")
     t.append("   F2 config · Ctrl+S settings", style="bright_black")
     if notes:                                     # own line: provider status must never push them off-screen
         t.append("\n" + "   ".join(notes), style="cyan")
@@ -173,6 +177,22 @@ def plan_view(proj: Projection, selected: str | None = None, focused: bool = Fal
     if pl["out_of_scope"]:
         section("Out of scope")
         for i, r in enumerate(pl["out_of_scope"], 1): item(f"OUT-{i}", r)
+    if proj.findings:
+        section("Architect review")
+        for fid, f in proj.findings.items():
+            v, q = f.get("verdict"), f.get("question")
+            if v == "fixed":
+                st, sty = "fixed ✓", "green"
+            elif v == "rejected":
+                st, sty = "rejected", "bright_black"
+            elif v == "question" and q in proj.questions:
+                done = proj.questions[q]["answered"]
+                st, sty = (f"{q} answered ✓", "green") if done else (f"{q} open ← blocks /approve", "bold red")
+            else:
+                st, sty = "not triaged yet", "yellow"
+            line = Text(f"{f.get('severity', ''):<7} {(f.get('file') or '').rsplit('/', 1)[-1][:26]}  ", style="bright_black")
+            line.append(st, style=sty)
+            grid.add_row(Text(f" {fid}", style="bright_black"), line)
     open_q = [q for q in proj.questions.values() if not q["answered"]]
     if open_q:
         section("Open questions")
@@ -187,11 +207,77 @@ def plan_view(proj: Projection, selected: str | None = None, focused: bool = Fal
 
 
 def checklist_view(checks) -> Text:
-    t = Text("Ready to approve?\n", style="bright_black")
-    for c in checks:
-        t.append(("✓ " if c.ok else ("✗ " if c.blocking else "! ")), style="green" if c.ok else "red" if c.blocking else "yellow")
-        t.append(c.label + (f" — {c.detail}" if c.detail and not c.ok else "") + "\n")
+    """Compact: one line when ready, else only what is still missing."""
+    bad = [c for c in checks if not c.ok and c.blocking]
+    warn = [c for c in checks if not c.ok and not c.blocking]
+    t = Text("Ready to approve? ", style="bright_black")
+    t.append("✓" if not bad else f"✗ {len(bad)} left", style="bold green" if not bad else "bold red")
+    for c in bad:
+        t.append("\n  ✗ ", style="red")
+        t.append(c.label + (f" — {c.detail}" if c.detail else ""))
+    for c in warn:
+        t.append("\n  ! ", style="yellow")
+        t.append(c.label + (f" — {c.detail}" if c.detail else ""), style="bright_black")
     return t
+
+
+def next_step(proj: Projection, mode: str, checks=None, open_q: list | None = None, busy: str = "", frame: int = 0, running: str = "") -> tuple[Text, str]:
+    """(the bar above the composer, the key hint): what the user can do NOW, from the current state. Pure, so it is testable."""
+    t = Text()
+    spin = SPIN[frame % len(SPIN)]
+    open_q = open_q or []
+    ok, bad, warn = "bold green", "bold red", "yellow"
+    if mode == "CHAT":
+        t.append("Ask anything or describe a change", style=ok)
+        t.append("  ·  /ask /quick /plan force how Main handles it", style="bright_black")
+        return t, "Enter send · @ file · / commands · F2 config · F3/Ctrl+S settings · Ctrl+N home"
+    if proj.status == "WAITING_QUOTA":
+        t.append(f"✗ quota reached ({(proj.quota_hit or {}).get('provider')}) · resets {(proj.quota_hit or {}).get('reset')}", style=bad)
+        t.append("  ·  f switch roles to their fallback and continue  ·  w wait, then /resume", style="bright_black")
+        return t, "f fallback · w wait · /resume · Ctrl+N home"
+    if mode == "RESULT":
+        if proj.status == "COMPLETED":
+            t.append("✓ COMPLETED", style=ok)
+            t.append("  ·  type the next request (same branch)  ·  Ctrl+D diff  ·  /context", style="bright_black")
+        else:
+            t.append(f"✗ {proj.status}", style=bad)
+            t.append("  ·  /resume continues the unfinished tasks  ·  /setup if the machine was missing something  ·  or ask Main below", style="bright_black")
+        return t, "Ctrl+D diff · /context session.md · F2 config · /resume · Ctrl+N new task · ask Main below"
+    if mode == "RUN":
+        done = sum(1 for v in proj.tasks.values() if v == "done")
+        total = len((proj.plan or {}).get("tasks") or []) or len(proj.tasks)
+        t.append(f"{spin} " + (running or "running"), style=warn)
+        t.append(f"  ·  {done}/{total} done  ·  /stop  ·  Ctrl+D diff  ·  type to message Main"
+                 + ("  ·  Shift+Tab auto-approve commands" if proj.approval_mode != "auto" else ""), style="bright_black")
+        return t, "Enter send · Tab agents/cards · Ctrl+D diff · /context · /stop · Ctrl+N home · F2 config"
+    # PLAN
+    if busy:
+        t.append(f"{spin} {busy}", style=warn)
+        t.append("  ·  you can type comments meanwhile", style="bright_black")
+        return t, "Enter send · Tab plan items/cards · /model · F2 config · /quit"
+    if proj.pending:
+        t.append("Proposal waiting for you", style=warn)
+        t.append("  ·  a accept  ·  x reject  ·  e edit (reject + comment)", style="bright_black")
+        return t, "a accept · e edit · x reject · Esc chat"
+    if open_q:
+        ids = ", ".join(q["id"] for q in open_q[:6])
+        t.append(f"✗ {len(open_q)} question{'s' if len(open_q) > 1 else ''} wait for you: {ids}", style=bad)
+        t.append("  ·  1–9 pick on the card  ·  or type your own answer", style="bright_black")
+        return t, "1–9 pick · ↑↓ + Enter confirm · type to answer in your own words · Esc chat"
+    failing = [c for c in (checks or []) if not c.ok and c.blocking]
+    if any("architect" in c.label for c in failing):
+        t.append("✗ the architect has not reviewed this version", style=bad)
+        t.append("  ·  /review  ·  or /approve --skip-review", style="bright_black")
+        return t, "Enter send · /review · /approve --skip-review · Tab plan items · /quit"
+    if failing:
+        t.append(f"✗ not ready: {failing[0].label}" + (f" (+{len(failing) - 1} more)" if len(failing) > 1 else ""), style=bad)
+        return t, "Enter send · Tab plan items/cards · /questions · /review · /quit"
+    t.append("✓ Ready", style=ok)
+    t.append("  ·  /approve runs the plan  ·  type to change it  ·  /review asks the architect again", style="bright_black")
+    for c in (checks or []):
+        if not c.ok:
+            t.append(f"  ·  ! {c.label}", style="yellow")
+    return t, "/approve to run · type to comment · Tab plan items · /review · /findings · /quit"
 
 
 WHO = {"you": ("you", "yellow"), "main": ("main", "cyan"), "sys": ("·", "bright_black"), "arch": ("architect", "medium_purple1")}
@@ -209,11 +295,15 @@ def message_view(m: dict) -> RenderableType:
         t.append("[answer · plan unchanged] ", style="bright_black")
     if m["who"] == "arch":
         t.append(f"{m.get('trigger', '')} → {m['text']}", style="medium_purple1")
-        for f in m.get("findings") or []:
-            t.append(f"\n{'':<10}{f.get('id')} ", style="bold")
-            t.append(f"{f.get('severity', '')} ", style=SEV.get(f.get("severity", ""), ""))
-            t.append(f"{f.get('file') or ''} ", style="bright_black")
-            t.append(str(f.get("message", ""))[:300])
+        fs = m.get("findings") or []
+        for f in fs:
+            t.append(f"\n{'':<10}{str(f.get('severity', '')):<8}", style=SEV.get(f.get("severity", ""), ""))
+            t.append(f"{str(f.get('id')):<4}", style="bold")
+            t.append(f"{(f.get('file') or '').rsplit('/', 1)[-1]:<28.28} ", style="bright_black")
+            msg = " ".join(str(f.get("message", "")).split())
+            t.append(msg[:80] + ("…" if len(msg) > 80 else ""))
+        if fs:
+            t.append(f"\n{'':<10}/findings shows each one in full", style="bright_black")
         return t
     t.append(m["text"], style="bright_black" if m["who"] == "sys" else "")
     return t

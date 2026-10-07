@@ -538,3 +538,46 @@ async def test_plan_command_forces_the_plan_flow(repo, tmp_path):
         await see(pilot, app, "never used")
         await send(pilot, app, "/plan add feature X")
         await until(pilot, lambda: app.mode() == "PLAN" and app.proj.plan is not None)
+
+
+async def test_plan_screen_tells_you_the_next_step_and_lists_findings(repo, tmp_path):
+    from agent_desk.contracts import ArchitectReview, Finding
+    sc = Script(plan(task("T1")), architect=lambda trig, spec: ArchitectReview(verdict="approve", findings=[], advice=[]))
+    app, rt = make_app(repo, tmp_path, sc)
+    async with app.run_test(size=SIZE) as pilot:
+        await send(pilot, app, "do it")
+        await until(pilot, lambda: app.mode() == "PLAN" and app.proj.plan is not None and app.session.architect_reviewed)
+        t = await see(pilot, app, "✓ Ready", "/approve runs the plan", "Ready to approve? ✓")
+        assert t.index("Ready to approve?") < t.index("Goal")                 # the checklist leads the plan column
+        await send(pilot, app, "/findings")
+        await see(pilot, app, "no architect findings yet")
+
+
+async def test_shift_tab_and_mode_command_switch_approvals(repo, tmp_path):
+    app, rt = make_app(repo, tmp_path, Script(plan(task("T1")), route=lambda sp: route("answer", "hi")))
+    async with app.run_test(size=SIZE) as pilot:
+        await pilot.press("shift+tab")
+        assert app.session is None                                          # nothing to switch before a conversation
+        await send(pilot, app, "hello")
+        await see(pilot, app, "approvals ask")
+        await pilot.press("shift+tab")
+        await see(pilot, app, "approvals AUTO")
+        assert app.session.approval_mode == "auto"
+        await send(pilot, app, "/mode ask")
+        await see(pilot, app, "approvals ask")
+
+
+async def test_auto_mode_runs_worker_commands_without_the_modal_and_A_switches(repo, tmp_path):
+    from agent_desk.tui.screens import ChoiceScreen
+    loaded = load(repo, global_path=NOGLOBAL)
+    reg = default_registry()
+    rt = ApprovingRuntime(Script(plan(task("T1", write=True))), "node build.js")
+    app = AgentDeskApp(repo, loaded, reg, lambda l: RuntimeRouter(l.config, reg, {"codex": rt, "claude": rt, "antigravity": rt}), tmp_path / "home")
+    async with app.run_test(size=SIZE) as pilot:
+        await send(pilot, app, "do it")
+        await until(pilot, lambda: app.session and app.session.studio)
+        await send(pilot, app, "/approve")
+        await until(pilot, lambda: isinstance(app.screen, ChoiceScreen))     # ask mode: the unknown command asks once
+        await pilot.press("A")
+        await until(pilot, lambda: app.outcome is not None)
+        assert rt.answers == [True] and app.session.approval_mode == "auto"

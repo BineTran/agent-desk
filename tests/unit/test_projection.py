@@ -82,7 +82,8 @@ def test_triage_and_invalidation_show_in_chat():
         {"finding_id": "F1", "verdict": "fixed", "reason": "ok"}, {"finding_id": "F3", "verdict": "rejected", "reason": "decided in D-001"},
         {"finding_id": "F4", "verdict": "question", "reason": "", "question": "Q-1"}]}))
     p.apply(ev(2, "architect.invalidated", {"version": 3}))
-    assert p.chat[0]["text"] == "before_plan triage · v1→v2 · F1 fixed · F3 rejected: decided in D-001 · F4 question Q-1"
+    assert p.chat[0]["text"].splitlines() == ["before_plan triage · v1→v2", "  F1   fixed ✓", "  F3   rejected: decided in D-001", "  F4   → Q-1 asks you"]
+    assert (p.findings["F4"]["verdict"], p.findings["F4"]["question"]) == ("question", "Q-1")
     assert "plan v3 changed" in p.chat[1]["text"]
 
 

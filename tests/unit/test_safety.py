@@ -34,3 +34,19 @@ def test_secret_reads_go_to_the_env_gate():
     assert classify("git push origin x", "/w", root) == "approve"
     assert classify_path("/w/.env") == "secret" and classify_path("/home/u/.aws/credentials") == "secret"
     assert classify_path("/w/src/app.ts") == "allow" and classify_path("/w/.env.sample") == "allow"
+
+
+@pytest.mark.parametrize("cmd,expect", [
+    ("node build.js", "allow"), ("echo hi > out.txt", "allow"), ("rm -rf dist", "allow"), ("git reset --hard", "allow"), ("npx jest", "allow"),
+    ("git push origin x", "approve"), ("pnpm prisma migrate dev", "approve"), ("terraform apply", "approve"), ("sudo ls", "approve"),
+    ("npm publish", "approve"), ("cat /etc/hosts", "approve"), ("cat ../../x", "approve"),
+    ("git push --force", "deny"), ("rm -rf /", "deny"), ("cat .env", "secret"),
+])
+def test_auto_mode_runs_everything_in_the_worktree_except_external(cmd, expect):
+    assert classify(cmd, str(R), R, auto=True, local_ok=True) == expect
+
+
+def test_auto_mode_outside_a_worktree_still_asks_for_local_destruction():
+    assert classify("rm -rf dist", str(R), R, auto=True, local_ok=False) == "approve"
+    assert classify("node x.js", str(R), R, auto=True, local_ok=False) == "allow"
+    assert classify("pnpm test", "/other/repo", R, auto=True, local_ok=True) == "approve"

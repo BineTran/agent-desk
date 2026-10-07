@@ -124,6 +124,8 @@ class Projection:
     log: list[tuple] = field(default_factory=list)
     verify: dict = field(default_factory=dict)          # check -> {passed, required}
     approvals: int = 0
+    auto_approved: int = 0
+    approval_mode: str = "ask"          # ask | auto (Shift+Tab, /mode)
     architect: dict = field(default_factory=lambda: {"calls": 0, "tokens": 0, "advice": "—", "active": None, "reviews": []})
     tokens: dict = field(default_factory=dict)          # (provider, role) -> output+input tokens
     token_detail: dict = field(default_factory=dict)    # (provider, role) -> {fresh, cached, output}: fresh input is what the quota feels most
@@ -134,6 +136,7 @@ class Projection:
     errors: list = field(default_factory=list)
     overrides: list = field(default_factory=list)       # role/engine switches made in-session
     limits: dict = field(default_factory=dict)          # provider -> last rate_limit_info (claude: status + resetsAt)
+    findings: dict = field(default_factory=dict)        # architect finding id -> {severity, file, message, trigger, verdict, reason, question}
     annotations: dict = field(default_factory=dict)     # plan item id -> note (what changed it, where a question came from)
 
     # ------------------------------------------------------------------
@@ -200,7 +203,7 @@ class Projection:
         self.plan = self.pending = self.summary = self.quota_hit = None
         self.plan_version, self.plan_hash, self.approved = 0, "", False
         self.versions, self.agents, self.tasks, self.verify, self.questions = [], {}, {}, {}, {}
-        self.gate_unmet, self.errors, self.followups, self.annotations = [], [], [], {}
+        self.gate_unmet, self.errors, self.followups, self.annotations, self.findings = [], [], [], {}, {}
         self.architect = {"calls": 0, "tokens": 0, "advice": "—", "active": None, "reviews": []}
         self.mode, self.status = ("RUN" if p.get("kind") == "quick" else "PLAN"), ("RUNNING" if p.get("kind") == "quick" else "PLANNING")
         self.chat.append({"who": "sys", "text": f"— J{p.get('job')} {p.get('kind')}: {str(p.get('brief') or '')[:100]}"})
@@ -345,7 +348,11 @@ class Projection:
     def _on_verification_baseline(self, e):
         self.baseline = {**getattr(self, "baseline", {}), e.payload["name"]: e.payload}
 
+    def _on_approval_mode(self, e): self.approval_mode = e.payload.get("mode", "ask")
+
     def _on_approval_classified(self, e):
+        if e.payload.get("auto"):
+            self.auto_approved += 1
         if e.payload.get("verdict") == "approve":
             self.approvals += 1
 
@@ -354,6 +361,8 @@ class Projection:
         self.chat.append({"who": "arch", "text": p.get("verdict") or ("unavailable: " + str(p.get("error") or "")), "findings": p.get("findings") or [],
                           "trigger": p["trigger"]})
         for f in p.get("findings") or []:
+            self.findings[f.get("id")] = {"severity": f.get("severity", ""), "file": f.get("file") or "", "message": f.get("message", ""),
+                                          "trigger": p["trigger"], "verdict": None, "reason": "", "question": None}
             if f.get("file"):
                 self.annotations.setdefault(f"F:{f.get('id')}", f"{f.get('severity')} {f.get('file')}")
         self.architect["reviews"].append({"trigger": p["trigger"], "verdict": p["verdict"], "n": len(p["findings"]), "fallback": p.get("via_fallback")})
@@ -364,16 +373,16 @@ class Projection:
 
     def _on_architect_triaged(self, e):
         p = e.payload
-        parts = []
+        lines = []
         for it in p.get("items") or []:
-            s = f"{it['finding_id']} {it['verdict']}"
-            if it["verdict"] == "rejected" and it.get("reason"):
-                s += f": {it['reason'][:80]}"
-            elif it["verdict"] == "question" and it.get("question"):
-                s += f" {it['question']}"
-            parts.append(s)
+            f = self.findings.setdefault(it["finding_id"], {"severity": it.get("severity", ""), "file": "", "message": "", "trigger": p.get("trigger"),
+                                                            "verdict": None, "reason": "", "question": None})
+            f.update(verdict=it["verdict"], reason=it.get("reason") or "", question=it.get("question"))
+            tail = {"fixed": "fixed ✓", "rejected": "rejected" + (f": {it['reason'][:80]}" if it.get("reason") else ""),
+                    "question": f"→ {it.get('question') or 'a question'} asks you"}.get(it["verdict"], it["verdict"])
+            lines.append(f"  {it['finding_id']:<5}{tail}")
         change = f"v{p.get('from')}→v{p['to']}" if p.get("to") else "no plan change"
-        self.chat.append({"who": "main", "text": " · ".join([f"{p.get('trigger')} triage", change, *parts])})
+        self.chat.append({"who": "main", "text": f"{p.get('trigger')} triage · {change}" + "".join("\n" + l for l in lines)})
 
     def _on_architect_invalidated(self, e):
         self.chat.append({"who": "sys", "text": f"plan v{e.payload.get('version')} changed → architect re-reviewing (/approve --skip-review to skip)"})
@@ -470,7 +479,9 @@ def humanize(e: Event, pj: "Projection") -> tuple[str, str]:
     if t == "architect.invalidated":
         return "you", f"plan v{p.get('version')} changed · architect review reset"
     if t == "approval.classified":
-        return "policy", f"{clean_cmd(str(p.get('command') or ''))[:100]} → {p.get('verdict')}"
+        return "policy", f"{clean_cmd(str(p.get('command') or ''))[:100]} → {p.get('verdict')}" + (" (auto)" if p.get("auto") else "")
+    if t == "approval.mode":
+        return "you", f"approvals: {p.get('mode')}"
     if t == "approval.gated":
         return p.get("by") or "debug", f"{clean_cmd(str(p.get('command') or ''))[:90]} → {p.get('decision')}" + (f" · {p['reason'][:100]}" if p.get("reason") else "")
     if t == "approval.resolved":
